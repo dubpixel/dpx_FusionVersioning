@@ -1,0 +1,14 @@
+{
+	"autodeskProduct":"Fusion",
+	"type":"addin",
+	"id":"dpxVersioning",
+	"author":"DPX Team",
+	"description":{
+		"":"DPX versioning tool - automatically tags bodies based on filename prefix",
+		"en":"DPX company versioning tool - automatically tags bodies based on filename prefix"
+	},
+	"version":"1.0",
+	"runOnStartup":true,
+	"supportedOS":"windows|mac",
+	"editEnabled":true
+}
