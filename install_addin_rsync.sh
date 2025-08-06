@@ -1,9 +1,8 @@
 #!/bin/bash
-#install_addin script v1.5 - dpx-2025 i@dubpixel.tv
 
 echo "Starting Fusion 360 add-in installation..."
 
-SOURCE_ADDIN_PATH="$(pwd)"
+SOURCE_ADDIN_PATH="$(dirname "$0")/.."
 echo "Source add-in folder resolved to: $SOURCE_ADDIN_PATH"
 
 DEST_ADDINS_PATH="$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns"
@@ -21,10 +20,11 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-echo "Copying add-in folder..."
-cp -Rv "$SOURCE_ADDIN_PATH" "$DEST_ADDINS_PATH"
+echo "Copying add-in folder with progress..."
+rsync -a --progress "$SOURCE_ADDIN_PATH/" "$DEST_ADDINS_PATH/$(basename "$SOURCE_ADDIN_PATH")/"
+
 if [ $? -eq 0 ]; then
-  echo "Add-in copied successfully to: $DEST_ADDINS_PATH"
+  echo "Add-in copied successfully to: $DEST_ADDINS_PATH/$(basename "$SOURCE_ADDIN_PATH")"
 else
   echo "ERROR: Failed to copy add-in."
   exit 1
