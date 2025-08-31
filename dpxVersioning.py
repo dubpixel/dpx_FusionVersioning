@@ -261,6 +261,11 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # Save the document if any bodies were renamed
             # This keeps file version in sync with body version tags
             if renamed_count > 0:
+                # Default commit message (used as fallback)
+                default_commit_message = f"[▓▓▓ DPX ▓▓▓] Auto-versioned to v{nextVerNum} ({renamed_count} {file_prefix} bodies)"
+                
+                # Try to get user comment
+                commit_message = default_commit_message
                 try:
                     # Prompt user for optional version comment
                     result = ui.inputBox(
@@ -270,24 +275,29 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                     )
                     
                     if result[0]:  # User clicked OK
-                        user_comment = result[1].strip()
+                        user_comment = result[1].strip() if result[1] else ""
                         if user_comment:
-                            # Create commit message with user comment
-                            commit_message = f"[▓▓▓ DPX ▓▓▓] Auto-versioned to v{nextVerNum} ({renamed_count} {file_prefix} bodies) - {user_comment}"
-                        else:
-                            # Default message if no comment provided
-                            commit_message = f"[▓▓▓ DPX ▓▓▓] Auto-versioned to v{nextVerNum} ({renamed_count} {file_prefix} bodies)"
-                        
-                        doc.save(commit_message)
-                        ui.messageBox(f'Document saved! File is now version v{nextVerNum}')
-                    else:
-                        # User cancelled - still save but with default message
-                        commit_message = f"[▓▓▓ DPX ▓▓▓] Auto-versioned to v{nextVerNum} ({renamed_count} {file_prefix} bodies)"
-                        doc.save(commit_message)
-                        ui.messageBox(f'Document saved! File is now version v{nextVerNum}')
-                        
+                            # Sanitize comment - remove any problematic characters
+                            # Keep only alphanumeric, spaces, basic punctuation
+                            import re
+                            sanitized_comment = re.sub(r'[^\w\s\-\.\,\!\?\(\)]', '', user_comment)
+                            if sanitized_comment:
+                                commit_message = f"{default_commit_message} - {sanitized_comment}"
                 except:
-                    ui.messageBox('Bodies renamed but failed to save document:\n{}'.format(traceback.format_exc()))
+                    # If input dialog fails, just use default message
+                    pass
+                
+                # Save the document with the commit message
+                try:
+                    doc.save(commit_message)
+                    ui.messageBox(f'Document saved! File is now version v{nextVerNum}')
+                except:
+                    # If save with comment fails, try with default message
+                    try:
+                        doc.save(default_commit_message)
+                        ui.messageBox(f'Document saved! File is now version v{nextVerNum}\n(Note: Custom comment could not be saved)')
+                    except:
+                        ui.messageBox('Bodies renamed but failed to save document:\n{}'.format(traceback.format_exc()))
             
         except:
             if ui:
