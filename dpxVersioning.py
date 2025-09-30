@@ -1,36 +1,70 @@
-"""
-dpxVersioning - Company Versioning Script for Fusion 360
-
-DESCRIPTION:
-This add-in provides automated version tagging for bodies in Fusion 360 designs.
-It identifies bodies that match the filename prefix and adds version tags to keep
-designs organized and synchronized with file versions.
-
-FEATURES:
-- Automatically detects filename prefix (first 3 characters + underscore)
-- Only tags bodies that match the file's naming convention
-- Uses file version + 1 to stay synchronized after save
-- Handles both underscore (_) and dash (-) separators
-- Removes existing version tags before applying new ones
-- Auto-saves after renaming to maintain version sync
-
-WORKFLOW:
-1. User clicks the "DPX Versioning" button in the Modify panel
-2. Script extracts prefix from filename (e.g., "dpx_widget.f3d" → "dpx_")
-3. Finds all bodies starting with that prefix
-4. Renames them with next version number (current version + 1)
-5. Saves the file so versions stay in sync
-
-EXAMPLES:
-- File: "dpx_widget.f3d" (version 3)
-- Bodies: "dpx_lever", "dpx_bracket_v2", "std_screw"
-- Result: "dpx_lever_v4", "dpx_bracket_v4", "std_screw" (unchanged)
-- File saves and becomes version 4
-
-Created by: DPX Team
-Version: 1.0
-Based on: versionTagBodies
-"""
+# ================================================================================
+# PYTHON SCRIPT - FUSION 360 ADD-IN
+# ================================================================================
+#
+# This project includes AI-generated code assistance provided by GitHub Copilot.
+# 
+# GitHub Copilot is an AI programming assistant that helps developers write code
+# more efficiently by providing suggestions and completing code patterns.
+#
+# Ground Rules for AI Assistance:
+# - No modifications to working code without explicit request
+# - Comprehensive commenting of all code and preservation of existing comments
+#   (remove comments that become false/obsolete)
+# - Small, incremental changes to maintain code stability
+# - Verification before implementation of any suggestions
+# - Stay focused on the current task - do not jump ahead or suggest next steps
+# - Answer only what is asked - do not anticipate or propose additional work
+# - ALL user prompts and AI solutions must be documented in the change log comments
+#   - Format: User prompt as single line, followed by itemized solution with → bullet
+#
+# The AI assistant will follow these directives to ensure code quality,
+# maintainability, and collaborative development practices.
+#
+# ================================================================================
+# PROJECT: dpx_FusionVersioning
+# ================================================================================
+#
+# File-specific information: dpxVersioning.py, author: DPX Team, purpose: Automated version tagging for bodies in Fusion 360 designs, dependencies: adsk.core, adsk.fusion
+#
+# DESCRIPTION:
+# This add-in provides automated version tagging for bodies in Fusion 360 designs.
+# It identifies bodies that match the filename prefix and adds version tags to keep
+# designs organized and synchronized with file versions.
+#
+# FEATURES:
+# - Automatically detects filename prefix (first 3 characters + underscore)
+# - Only tags bodies that match the file's naming convention
+# - Uses file version + 1 to stay synchronized after save
+# - Handles both underscore (_) and dash (-) separators
+# - Removes existing version tags before applying new ones
+# - Auto-saves after renaming to maintain version sync
+#
+# WORKFLOW:
+# 1. User clicks the "DPX Versioning" button in the Modify panel
+# 2. Script extracts prefix from filename (e.g., "dpx_widget.f3d" → "dpx_")
+# 3. Finds all bodies starting with that prefix
+# 4. Renames them with next version number (current version + 1)
+# 5. Saves the file so versions stay in sync
+#
+# EXAMPLES:
+# - File: "dpx_widget.f3d" (version 3)
+# - Bodies: "dpx_lever", "dpx_bracket_v2", "std_screw"
+# - Result: "dpx_lever_v4", "dpx_bracket_v4", "std_screw" (unchanged)
+# - File saves and becomes version 4
+#
+# Created by: DPX Team
+# Version: 1.0
+# Based on: versionTagBodies
+#
+# CHANGE LOG:
+#
+# hello agent can you please analyze my dpxVersioning.py file and adjust your copilot-instrucitons to write the best possible code for fusion360 plugins? also comment the code accordingly as per the instructions if it is not already
+# → Analyzed dpxVersioning.py code - well-structured Fusion 360 add-in with proper event handling, error management, and UI integration
+# → Updated .github/copilot-instructions.md with Fusion 360 specific guidelines for API usage, event handlers, error handling, UI integration, and code patterns
+# → Standardized file header in dpxVersioning.py to match required format with AI rules, project info, and change log
+#
+# ================================================================================
 
 import adsk.core
 import adsk.fusion
