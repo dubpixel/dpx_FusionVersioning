@@ -28,8 +28,8 @@
 # File-specific information: dpxVersioning.py, author: DPX Team, purpose: Automated version tagging for bodies in Fusion 360 designs, dependencies: adsk.core, adsk.fusion
 #
 # DESCRIPTION:
-# This add-in provides automated version tagging for bodies in Fusion 360 designs.
-# It identifies bodies that match the filename prefix and adds version tags to keep
+# This add-in provides automated version tagging for bodies and components in Fusion 360 designs.
+# It identifies bodies and components that match the filename prefix and adds version tags to keep
 # designs organized and synchronized with file versions.
 #
 # FEATURES:
@@ -43,21 +43,44 @@
 # WORKFLOW:
 # 1. User clicks the "DPX Versioning" button in the Modify panel
 # 2. Script extracts prefix from filename (e.g., "dpx_widget.f3d" → "dpx_")
-# 3. Finds all bodies starting with that prefix
+# 3. Finds all bodies and components starting with that prefix
 # 4. Renames them with next version number (current version + 1)
 # 5. Saves the file so versions stay in sync
 #
 # EXAMPLES:
 # - File: "dpx_widget.f3d" (version 3)
-# - Bodies: "dpx_lever", "dpx_bracket_v2", "std_screw"
+# - Components/Bodies: "dpx_lever", "dpx_bracket_v2", "std_screw"
 # - Result: "dpx_lever_v4", "dpx_bracket_v4", "std_screw" (unchanged)
 # - File saves and becomes version 4
 #
 # Created by: DPX Team
-# Version: 1.0
+# Version: 1.0.3
 # Based on: versionTagBodies
 #
 # CHANGE LOG:
+#
+# Failed to execute DPX Versioning: AttributeError: 'Component' object has no attribute 'parentComponent'
+# → Removed faulty parentComponent check and added try-except around comp.name = new_name to catch root component rename error
+# → Incremented to v1.0.3
+#
+# Failed to execute DPX Versioning: RuntimeError: 3 : root component name cannot be changed (still happening)
+# → Changed root component check from comp != design.rootComponent to comp.parentComponent is not None for more reliable detection
+# → Root component has no parent, so this should properly skip it
+#
+# Failed to execute DPX Versioning: RuntimeError: 3 : root component name cannot be changed (again)
+# → Added version constant and startup announcement (v1.0.1) to help identify if changes are loaded
+# → User may need to fully restart Fusion 360 to clear cached add-in code
+#
+# Failed to execute DPX Versioning: RuntimeError: 3 : root component name cannot be changed
+# → Added check to skip renaming the root component (design.rootComponent) as it cannot be renamed in Fusion 360
+# → Component renaming now only applies to non-root components that match the prefix
+# → Bodies within the root component can still be renamed if they match
+#
+# ok great next thing we want to do is handle modifying components, as well as bodies. currently the renaming pass does not address component names which it absolutely must to be properly funcitonal. however im unsure if we should be renaming bodies inside the components. lets just keep doing it for now but maybe we put an option in we dont use but its there for later.
+# → Added component renaming alongside body renaming to ensure complete versioning functionality
+# → Introduced rename_bodies flag (set to True) for future control over body renaming
+# → Updated descriptions, workflow, examples, and messages to reflect component handling
+# → Restructured the renaming loop to process all components and their bodies
 #
 # hello agent can you please analyze my dpxVersioning.py file and adjust your copilot-instrucitons to write the best possible code for fusion360 plugins? also comment the code accordingly as per the instructions if it is not already
 # → Analyzed dpxVersioning.py code - well-structured Fusion 360 add-in with proper event handling, error management, and UI integration
@@ -69,6 +92,9 @@
 import adsk.core
 import adsk.fusion
 import traceback
+
+# Add-in version
+VERSION = "1.0.3"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -124,7 +150,7 @@ def run(context):
                 if not buttonControl:
                     buttonControl = modifyPanel.controls.addCommand(cmdDef, 'SolidModifyPanel')
                     
-        ui.messageBox('DPX Versioning add-in loaded!\nLook for the "DPX Versioning" button in the Modify panel.')
+        ui.messageBox(f'DPX Versioning add-in v{VERSION} loaded!\nLook for the "DPX Versioning" button in the Modify panel.')
 
     except:
         if ui:
@@ -241,25 +267,18 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                 # If no underscore in filename, just use first 3 letters + underscore
                 file_prefix = filename.lower()[:3] + '_'
             
+            # Option to control body renaming (available for future use)
+            rename_bodies = True
+            
             # Initialize counters for user feedback
             renamed_count = 0
             skipped_count = 0
             
-            # Iterate through all components and their bodies in the design
+            # Iterate through all components in the design
             for comp in design.allComponents:
-                # Skip components with no bodies
-                if not comp.bRepBodies:
-                    continue
-                    
-                # Process each body in the component
-                for body in comp.bRepBodies:
-                    # Skip invalid bodies
-                    if not body or not body.name:
-                        continue
-                    
-                    # Get the base name by removing any existing version suffix
-                    # Example: "dpx_lever_v3" → "dpx_lever"
-                    current_name = body.name
+                # Rename component if it matches the prefix
+                if comp.name:
+                    current_name = comp.name
                     if '_v' in current_name:
                         baseName = current_name.split('_v')[0]
                     else:
@@ -270,25 +289,60 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                     base_name_lower = baseName.lower()
                     prefix_with_dash = file_prefix.replace('_', '-')
                     
-                    # Skip bodies that don't match our file prefix
-                    if not (base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)):
-                        skipped_count += 1
-                        continue
-                    
-                    # Create the new name with the next version number
-                    new_name = f"{baseName}_v{nextVerNum}"
-                    
-                    # Only rename if the name is actually different
-                    # This avoids unnecessary changes and potential issues
-                    if body.name != new_name:
-                        body.name = new_name
-                        renamed_count += 1
+                    if base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash):
+                        new_name = f"{baseName}_v{nextVerNum}"
+                        
+                        # Only rename if the name is actually different
+                        if comp.name != new_name:
+                            try:
+                                comp.name = new_name
+                                renamed_count += 1
+                            except RuntimeError as e:
+                                if "root component name cannot be changed" in str(e):
+                                    # Skip root component renaming
+                                    pass
+                                else:
+                                    raise
+                
+                # Rename bodies within the component if enabled
+                if rename_bodies:
+                    for body in comp.bRepBodies:
+                        # Skip invalid bodies
+                        if not body or not body.name:
+                            continue
+                        
+                        # Get the base name by removing any existing version suffix
+                        # Example: "dpx_lever_v3" → "dpx_lever"
+                        current_name = body.name
+                        if '_v' in current_name:
+                            baseName = current_name.split('_v')[0]
+                        else:
+                            baseName = current_name
+                            
+                        # Check if the BASE name starts with the file prefix
+                        # Support both underscore and dash separators
+                        base_name_lower = baseName.lower()
+                        prefix_with_dash = file_prefix.replace('_', '-')
+                        
+                        # Skip bodies that don't match our file prefix
+                        if not (base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)):
+                            skipped_count += 1
+                            continue
+                        
+                        # Create the new name with the next version number
+                        new_name = f"{baseName}_v{nextVerNum}"
+                        
+                        # Only rename if the name is actually different
+                        # This avoids unnecessary changes and potential issues
+                        if body.name != new_name:
+                            body.name = new_name
+                            renamed_count += 1
             
             # Provide user feedback about what was processed
             ui.messageBox(
                 f'DPX Versioning Results:\n'
                 f'File prefix: {file_prefix}\n'
-                f'Renamed {renamed_count} bodies with version tag v{nextVerNum} (current v{verNum} + 1)\n'
+                f'Renamed {renamed_count} bodies/components with version tag v{nextVerNum} (current v{verNum} + 1)\n'
                 f'Skipped {skipped_count} bodies (prefix mismatch)'
             )
             
@@ -296,7 +350,7 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # This keeps file version in sync with body version tags
             if renamed_count > 0:
                 # Default commit message (used as fallback)
-                default_commit_message = f"[▓▓▓ DPX ▓▓▓] Auto-versioned to v{nextVerNum} ({renamed_count} {file_prefix} bodies)"
+                default_commit_message = f"[▓▓▓ DPX ▓▓▓] Auto-versioned to v{nextVerNum} ({renamed_count} {file_prefix} bodies/components)"
                 
                 # Try to get user comment
                 commit_message = default_commit_message
