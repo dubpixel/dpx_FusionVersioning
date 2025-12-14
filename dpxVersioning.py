@@ -54,10 +54,17 @@
 # - File saves and becomes version 4
 #
 # Created by: DPX Team
-# Version: 1.0.3
+# Version: 1.0.4
 # Based on: versionTagBodies
 #
 # CHANGE LOG:
+#
+# ok so this thing isnt actually working on components whats about that
+# → Added explicit root component check using design.rootComponent reference before attempting rename
+# → Previously relied on try/except to catch root component error, now proactively skips it
+# → Added separate component_renamed_count counter for better feedback
+# → Updated results message to show components and bodies renamed separately
+# → Incremented to v1.0.4
 #
 # Failed to execute DPX Versioning: AttributeError: 'Component' object has no attribute 'parentComponent'
 # → Removed faulty parentComponent check and added try-except around comp.name = new_name to catch root component rename error
@@ -94,7 +101,7 @@ import adsk.fusion
 import traceback
 
 # Add-in version
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -273,9 +280,17 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # Initialize counters for user feedback
             renamed_count = 0
             skipped_count = 0
+            component_renamed_count = 0
+            
+            # Get reference to root component (cannot be renamed in Fusion 360)
+            rootComp = design.rootComponent
             
             # Iterate through all components in the design
             for comp in design.allComponents:
+                # Skip the root component - it cannot be renamed in Fusion 360
+                if comp == rootComp:
+                    continue
+                    
                 # Rename component if it matches the prefix
                 if comp.name:
                     current_name = comp.name
@@ -296,10 +311,11 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                         if comp.name != new_name:
                             try:
                                 comp.name = new_name
-                                renamed_count += 1
+                                component_renamed_count += 1
                             except RuntimeError as e:
-                                if "root component name cannot be changed" in str(e):
-                                    # Skip root component renaming
+                                # Catch any unexpected runtime errors during rename
+                                if "root component" in str(e).lower():
+                                    # Skip root component renaming (backup catch)
                                     pass
                                 else:
                                     raise
@@ -339,18 +355,20 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                             renamed_count += 1
             
             # Provide user feedback about what was processed
+            total_renamed = renamed_count + component_renamed_count
             ui.messageBox(
                 f'DPX Versioning Results:\n'
                 f'File prefix: {file_prefix}\n'
-                f'Renamed {renamed_count} bodies/components with version tag v{nextVerNum} (current v{verNum} + 1)\n'
+                f'Renamed {component_renamed_count} components with version tag v{nextVerNum}\n'
+                f'Renamed {renamed_count} bodies with version tag v{nextVerNum}\n'
                 f'Skipped {skipped_count} bodies (prefix mismatch)'
             )
             
-            # Save the document if any bodies were renamed
+            # Save the document if any bodies/components were renamed
             # This keeps file version in sync with body version tags
-            if renamed_count > 0:
+            if total_renamed > 0:
                 # Default commit message (used as fallback)
-                default_commit_message = f"[▓▓▓ DPX ▓▓▓] Auto-versioned to v{nextVerNum} ({renamed_count} {file_prefix} bodies/components)"
+                default_commit_message = f"[▓▓▓ DPX ▓▓▓] Auto-versioned to v{nextVerNum} ({total_renamed} {file_prefix} bodies/components)"
                 
                 # Try to get user comment
                 commit_message = default_commit_message
