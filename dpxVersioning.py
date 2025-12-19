@@ -1,116 +1,83 @@
 # ================================================================================
 # PYTHON SCRIPT - FUSION 360 ADD-IN
 # ================================================================================
-#
-# This project includes AI-generated code assistance provided by GitHub Copilot.
-# 
-# GitHub Copilot is an AI programming assistant that helps developers write code
-# more efficiently by providing suggestions and completing code patterns.
-#
-# Ground Rules for AI Assistance:
-# - No modifications to working code without explicit request
-# - Comprehensive commenting of all code and preservation of existing comments
-#   (remove comments that become false/obsolete)
-# - Small, incremental changes to maintain code stability
-# - Verification before implementation of any suggestions
-# - Stay focused on the current task - do not jump ahead or suggest next steps
-# - Answer only what is asked - do not anticipate or propose additional work
-# - ALL user prompts and AI solutions must be documented in the change log comments
-#   - Format: User prompt as single line, followed by itemized solution with → bullet
-#
-# The AI assistant will follow these directives to ensure code quality,
-# maintainability, and collaborative development practices.
-#
-# ================================================================================
 # PROJECT: dpx_FusionVersioning
 # ================================================================================
 #
-# File-specific information: dpxVersioning.py, author: DPX Team, purpose: Automated version tagging for bodies in Fusion 360 designs, dependencies: adsk.core, adsk.fusion
-#
 # DESCRIPTION:
-# This add-in provides automated version tagging for bodies and components in Fusion 360 designs.
-# It identifies bodies and components that match the filename prefix and adds version tags to keep
-# designs organized and synchronized with file versions.
+# This add-in provides automated version tagging for bodies and components in 
+# Fusion 360 designs. It identifies bodies and components that match the filename 
+# prefix and adds version tags to keep designs organized and synchronized with 
+# file versions.
 #
 # FEATURES:
 # - Automatically detects filename prefix (first 3 characters + underscore)
-# - Only tags bodies that match the file's naming convention
+# - Only tags bodies/components that match the file's naming convention
 # - Uses file version + 1 to stay synchronized after save
 # - Handles both underscore (_) and dash (-) separators
-# - Removes existing version tags before applying new ones
+# - Smart version tag replacement (only matches _v followed by digits at end)
 # - Auto-saves after renaming to maintain version sync
+# - Skips root component (Fusion doesn't allow renaming it)
 #
 # WORKFLOW:
 # 1. User clicks the "DPX Versioning" button in the Modify panel
 # 2. Script extracts prefix from filename (e.g., "dpx_widget.f3d" → "dpx_")
 # 3. Finds all bodies and components starting with that prefix
 # 4. Renames them with next version number (current version + 1)
-# 5. Saves the file so versions stay in sync
+# 5. Prompts for optional commit message
+# 6. Saves the file so versions stay in sync
 #
 # EXAMPLES:
 # - File: "dpx_widget.f3d" (version 3)
-# - Components/Bodies: "dpx_lever", "dpx_bracket_v2", "std_screw"
-# - Result: "dpx_lever_v4", "dpx_bracket_v4", "std_screw" (unchanged)
+# - Components/Bodies: "dpx_lever", "dpx_bracket_v2", "dpx_vertical_mount", "std_screw"
+# - Result: "dpx_lever_v4", "dpx_bracket_v4", "dpx_vertical_mount_v4", "std_screw" (unchanged)
 # - File saves and becomes version 4
 #
-# Created by: DPX Team
-# Version: 1.0.4
-# Based on: versionTagBodies
-#
-# CHANGE LOG:
-#
-# ok so this thing isnt actually working on components whats about that
-# → Added explicit root component check using design.rootComponent reference before attempting rename
-# → Previously relied on try/except to catch root component error, now proactively skips it
-# → Added separate component_renamed_count counter for better feedback
-# → Updated results message to show components and bodies renamed separately
-# → Incremented to v1.0.4
-#
-# Failed to execute DPX Versioning: AttributeError: 'Component' object has no attribute 'parentComponent'
-# → Removed faulty parentComponent check and added try-except around comp.name = new_name to catch root component rename error
-# → Incremented to v1.0.3
-#
-# Failed to execute DPX Versioning: RuntimeError: 3 : root component name cannot be changed (still happening)
-# → Changed root component check from comp != design.rootComponent to comp.parentComponent is not None for more reliable detection
-# → Root component has no parent, so this should properly skip it
-#
-# Failed to execute DPX Versioning: RuntimeError: 3 : root component name cannot be changed (again)
-# → Added version constant and startup announcement (v1.0.1) to help identify if changes are loaded
-# → User may need to fully restart Fusion 360 to clear cached add-in code
-#
-# Failed to execute DPX Versioning: RuntimeError: 3 : root component name cannot be changed
-# → Added check to skip renaming the root component (design.rootComponent) as it cannot be renamed in Fusion 360
-# → Component renaming now only applies to non-root components that match the prefix
-# → Bodies within the root component can still be renamed if they match
-#
-# ok great next thing we want to do is handle modifying components, as well as bodies. currently the renaming pass does not address component names which it absolutely must to be properly funcitonal. however im unsure if we should be renaming bodies inside the components. lets just keep doing it for now but maybe we put an option in we dont use but its there for later.
-# → Added component renaming alongside body renaming to ensure complete versioning functionality
-# → Introduced rename_bodies flag (set to True) for future control over body renaming
-# → Updated descriptions, workflow, examples, and messages to reflect component handling
-# → Restructured the renaming loop to process all components and their bodies
-#
-# hello agent can you please analyze my dpxVersioning.py file and adjust your copilot-instrucitons to write the best possible code for fusion360 plugins? also comment the code accordingly as per the instructions if it is not already
-# → Analyzed dpxVersioning.py code - well-structured Fusion 360 add-in with proper event handling, error management, and UI integration
-# → Updated .github/copilot-instructions.md with Fusion 360 specific guidelines for API usage, event handlers, error handling, UI integration, and code patterns
-# → Standardized file header in dpxVersioning.py to match required format with AI rules, project info, and change log
+# See CHANGELOG.md for version history
+# See .github/copilot-instructions.md for development guidelines
 #
 # ================================================================================
 
 import adsk.core
 import adsk.fusion
 import traceback
+import re
+import os
 
 # Add-in version
-VERSION = "1.0.4"
+VERSION = "1.0.9"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
 handlers = []
 
+
+def export_bodies(design, file_prefix, ui):
+    """
+    Export bodies matching the prefix to STL files.
+    
+    Args:
+        design: The active Fusion design
+        file_prefix: The prefix to match (e.g., "dpx_")
+        ui: The Fusion UI object for dialogs
+    
+    TODO: Implement export logic
+    """
+    # Placeholder for export functionality
+    ui.messageBox(
+        f'Export functionality coming soon.\n\n'
+        f'Would export all "{file_prefix}" bodies to STL.'
+    )
+    # TODO: Implement actual export logic here
+    # - Get export folder from user
+    # - Iterate through bodies matching prefix
+    # - Export each as STL
+
+
 def run(context):
     """
     Entry point for the add-in. Called when Fusion 360 loads the add-in.
-    Sets up the UI button and registers event handlers.
+    Sets up the UI buttons and registers event handlers.
     
     Args:
         context: Fusion 360 context object (not used in this implementation)
@@ -120,30 +87,39 @@ def run(context):
         # Get the Fusion 360 application and UI objects
         app = adsk.core.Application.get()
         ui = app.userInterface
+        
+        # Get the add-in directory path for resources
+        addin_path = os.path.dirname(os.path.realpath(__file__))
 
-        # Create a command definition for our DPX versioning tool
-        # Check if the command already exists to avoid duplicates
-        cmdDef = ui.commandDefinitions.itemById('dpxVersioningCmd')
-        if not cmdDef:
-            # Get the add-in directory path for resources
-            import os
-            addin_path = os.path.dirname(os.path.realpath(__file__))
-            
-            # Create the button definition with proper icon paths
-            cmdDef = ui.commandDefinitions.addButtonDefinition(
-                'dpxVersioningCmd',                                    # Command ID
-                'DPX Versioning',                                      # Button text
-                'DPX company versioning tool - tags bodies by prefix', # Tooltip
-                os.path.join(addin_path, 'resources')                 # Icon directory
+        # ==================== BUTTON 1: DPX Versioning ====================
+        cmdDef1 = ui.commandDefinitions.itemById('dpxVersioningCmd')
+        if not cmdDef1:
+            cmdDef1 = ui.commandDefinitions.addButtonDefinition(
+                'dpxVersioningCmd',
+                'DPX Versioning',
+                'Version tag components and bodies matching file prefix',
+                os.path.join(addin_path, 'resources')
             )
 
-        # Connect to the command created event
-        # This sets up what happens when the user clicks our button
-        onCommandCreated = DpxVersioningCommandCreatedHandler()
-        cmdDef.commandCreated.add(onCommandCreated)
-        handlers.append(onCommandCreated)  # Keep handler in scope
+        onCommandCreated1 = DpxVersioningCommandCreatedHandler(with_export=False)
+        cmdDef1.commandCreated.add(onCommandCreated1)
+        handlers.append(onCommandCreated1)
 
-        # Get the MODIFY panel in the MODEL workspace to add our button
+        # ==================== BUTTON 2: DPX Version + Export ====================
+        cmdDef2 = ui.commandDefinitions.itemById('dpxVersioningExportCmd')
+        if not cmdDef2:
+            cmdDef2 = ui.commandDefinitions.addButtonDefinition(
+                'dpxVersioningExportCmd',
+                'DPX Version + Export',
+                'Version tag AND export STLs for components/bodies matching file prefix',
+                os.path.join(addin_path, 'resources')
+            )
+
+        onCommandCreated2 = DpxVersioningCommandCreatedHandler(with_export=True)
+        cmdDef2.commandCreated.add(onCommandCreated2)
+        handlers.append(onCommandCreated2)
+
+        # ==================== Add buttons to Modify panel ====================
         workspaces = ui.workspaces
         modelingWorkspace = workspaces.itemById('FusionSolidEnvironment')
         
@@ -152,12 +128,17 @@ def run(context):
             modifyPanel = toolbarPanels.itemById('SolidModifyPanel')
             
             if modifyPanel:
-                # Add the command button to the Modify panel
-                buttonControl = modifyPanel.controls.itemById('dpxVersioningCmd')
-                if not buttonControl:
-                    buttonControl = modifyPanel.controls.addCommand(cmdDef, 'SolidModifyPanel')
+                # Add first button
+                buttonControl1 = modifyPanel.controls.itemById('dpxVersioningCmd')
+                if not buttonControl1:
+                    modifyPanel.controls.addCommand(cmdDef1)
+                
+                # Add second button
+                buttonControl2 = modifyPanel.controls.itemById('dpxVersioningExportCmd')
+                if not buttonControl2:
+                    modifyPanel.controls.addCommand(cmdDef2)
                     
-        ui.messageBox(f'DPX Versioning add-in v{VERSION} loaded!\nLook for the "DPX Versioning" button in the Modify panel.')
+        ui.messageBox(f'DPX Versioning add-in v{VERSION} loaded!\n\nTwo buttons added to Modify panel:\n• DPX Versioning - tags only\n• DPX Version + Export - tags and exports STLs')
 
     except:
         if ui:
@@ -175,12 +156,16 @@ def stop(context):
         app = adsk.core.Application.get()
         ui = app.userInterface
 
-        # Clean up the command definition
-        cmdDef = ui.commandDefinitions.itemById('dpxVersioningCmd')
-        if cmdDef:
-            cmdDef.deleteMe()
+        # Clean up both command definitions
+        cmdDef1 = ui.commandDefinitions.itemById('dpxVersioningCmd')
+        if cmdDef1:
+            cmdDef1.deleteMe()
+            
+        cmdDef2 = ui.commandDefinitions.itemById('dpxVersioningExportCmd')
+        if cmdDef2:
+            cmdDef2.deleteMe()
 
-        # Remove the button from the Modify panel
+        # Remove both buttons from the Modify panel
         workspaces = ui.workspaces
         modelingWorkspace = workspaces.itemById('FusionSolidEnvironment')
         
@@ -189,9 +174,13 @@ def stop(context):
             modifyPanel = toolbarPanels.itemById('SolidModifyPanel')
             
             if modifyPanel:
-                buttonControl = modifyPanel.controls.itemById('dpxVersioningCmd')
-                if buttonControl:
-                    buttonControl.deleteMe()
+                buttonControl1 = modifyPanel.controls.itemById('dpxVersioningCmd')
+                if buttonControl1:
+                    buttonControl1.deleteMe()
+                    
+                buttonControl2 = modifyPanel.controls.itemById('dpxVersioningExportCmd')
+                if buttonControl2:
+                    buttonControl2.deleteMe()
 
     except:
         if ui:
@@ -202,8 +191,9 @@ class DpxVersioningCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     Event handler for when the DPX Versioning command is created.
     Sets up the execute event handler that runs when the button is clicked.
     """
-    def __init__(self):
+    def __init__(self, with_export=False):
         super().__init__()
+        self.with_export = with_export
 
     def notify(self, args):
         """
@@ -215,7 +205,7 @@ class DpxVersioningCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
         try:
             # Connect to the execute event - this runs when user clicks the button
             cmd = args.command
-            onExecute = DpxVersioningCommandExecuteHandler()
+            onExecute = DpxVersioningCommandExecuteHandler(with_export=self.with_export)
             cmd.execute.add(onExecute)
             handlers.append(onExecute)  # Keep handler in scope
 
@@ -229,8 +219,9 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
     Event handler for when the DPX Versioning command is executed.
     Contains the main logic for version tagging bodies.
     """
-    def __init__(self):
+    def __init__(self, with_export=False):
         super().__init__()
+        self.with_export = with_export
 
     def notify(self, args):
         """
@@ -255,6 +246,11 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             doc = app.activeDocument
             if not doc:
                 ui.messageBox('No active document found.')
+                return
+            
+            # Check if document has been saved (unsaved docs have no dataFile)
+            if not doc.dataFile:
+                ui.messageBox('Please save the document first.\n\nDPX Versioning requires a saved file to determine version numbers.')
                 return
                 
             # Get current version number from the data file
@@ -281,6 +277,7 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             renamed_count = 0
             skipped_count = 0
             component_renamed_count = 0
+            component_skipped_count = 0
             
             # Get reference to root component (cannot be renamed in Fusion 360)
             rootComp = design.rootComponent
@@ -294,17 +291,20 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                 # Rename component if it matches the prefix
                 if comp.name:
                     current_name = comp.name
-                    if '_v' in current_name:
-                        baseName = current_name.split('_v')[0]
-                    else:
-                        baseName = current_name
+                    
+                    # Strip existing version tag (_v followed by digits) to get base name
+                    # Only matches _v## at the END of the name, so dpx_vertical stays intact
+                    match = re.match(r'^(.+)_v(\d+)$', current_name)
+                    baseName = match.group(1) if match else current_name
                         
                     # Check if the BASE name starts with the file prefix
                     # Support both underscore and dash separators
                     base_name_lower = baseName.lower()
                     prefix_with_dash = file_prefix.replace('_', '-')
                     
-                    if base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash):
+                    matches_prefix = base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)
+                    
+                    if matches_prefix:
                         new_name = f"{baseName}_v{nextVerNum}"
                         
                         # Only rename if the name is actually different
@@ -319,6 +319,8 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                                     pass
                                 else:
                                     raise
+                    else:
+                        component_skipped_count += 1
                 
                 # Rename bodies within the component if enabled
                 if rename_bodies:
@@ -328,12 +330,10 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                             continue
                         
                         # Get the base name by removing any existing version suffix
-                        # Example: "dpx_lever_v3" → "dpx_lever"
+                        # Only matches _v## at the END of the name, so dpx_vertical stays intact
                         current_name = body.name
-                        if '_v' in current_name:
-                            baseName = current_name.split('_v')[0]
-                        else:
-                            baseName = current_name
+                        match = re.match(r'^(.+)_v(\d+)$', current_name)
+                        baseName = match.group(1) if match else current_name
                             
                         # Check if the BASE name starts with the file prefix
                         # Support both underscore and dash separators
@@ -356,12 +356,14 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             
             # Provide user feedback about what was processed
             total_renamed = renamed_count + component_renamed_count
+            
             ui.messageBox(
-                f'DPX Versioning Results:\n'
-                f'File prefix: {file_prefix}\n'
-                f'Renamed {component_renamed_count} components with version tag v{nextVerNum}\n'
-                f'Renamed {renamed_count} bodies with version tag v{nextVerNum}\n'
-                f'Skipped {skipped_count} bodies (prefix mismatch)'
+                f'DPX Versioning v{VERSION}\n\n'
+                f'Fusion Filename: {filename}\n'
+                f'Version Tag: v{nextVerNum}\n'
+                f'Prefix: {file_prefix}\n\n'
+                f'Components: {component_renamed_count} Renamed, ({component_skipped_count} Skipped)\n'
+                f'Bodies: {renamed_count} Renamed, ({skipped_count} Skipped)'
             )
             
             # Save the document if any bodies/components were renamed
@@ -385,7 +387,6 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                         if user_comment:
                             # Sanitize comment - remove any problematic characters
                             # Keep only alphanumeric, spaces, basic punctuation
-                            import re
                             sanitized_comment = re.sub(r'[^\w\s\-\.\,\!\?\(\)]', '', user_comment)
                             if sanitized_comment:
                                 commit_message = f"{default_commit_message} - {sanitized_comment}"
@@ -404,6 +405,10 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                         ui.messageBox(f'Document saved! File is now version v{nextVerNum}\n(Note: Custom comment could not be saved)')
                     except:
                         ui.messageBox('Bodies renamed but failed to save document:\n{}'.format(traceback.format_exc()))
+            
+            # If this is the "Version + Export" button, run export after versioning
+            if self.with_export:
+                export_bodies(design, file_prefix, ui)
             
         except:
             if ui:

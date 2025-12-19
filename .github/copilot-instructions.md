@@ -1,92 +1,135 @@
-# ================================================================================
-# [FILE TYPE] - [FILE PURPOSE]
-# ================================================================================
-#
-# This project includes AI-generated code assistance provided by GitHub Copilot.
-# 
-# GitHub Copilot is an AI programming assistant that helps developers write code
-# more efficiently by providing suggestions and completing code patterns.
-#
-# Ground Rules for AI Assistance:
-# - No modifications to working code without explicit request
-# - Comprehensive commenting of all code and preservation of existing comments
-#   (remove comments that become false/obsolete)
-# - Small, incremental changes to maintain code stability
-# - Verification before implementation of any suggestions
-# - Stay focused on the current task - do not jump ahead or suggest next steps
-# - Answer only what is asked - do not anticipate or propose additional work
-# - ALL user prompts and AI solutions must be documented in the change log comments
-#   - Format: User prompt as single line, followed by itemized solution with → bullet
-#
-# The AI assistant will follow these directives to ensure code quality,
-# maintainability, and collaborative development practices.
-#
-# ================================================================================
-# PROJECT: dpx_replace_projectName
-# ================================================================================
-#
-# [File-specific information: name, author, purpose, dependencies, etc.]
-#
-# CHANGE LOG:
-# 
-# [Document all changes using the established format]
-#
-# ================================================================================
-### Fusion 360 Plugin Development Guidelines
+# DPX Fusion Versioning - Agent Instructions
 
-When developing Fusion 360 add-ins and scripts, follow these additional guidelines to ensure compatibility, performance, and user experience:
+## Project Overview
 
-- **API Usage**: Always import and use `adsk.core` and `adsk.fusion` appropriately. Access the application via `adsk.core.Application.get()`.
-- **Event Handlers**: Keep event handlers in a global list to prevent garbage collection. Use proper inheritance from Fusion 360 event handler classes.
-- **Error Handling**: Wrap all operations in try-except blocks and provide user-friendly error messages via `ui.messageBox()`.
-- **UI Integration**: Add commands to appropriate panels (e.g., Modify panel for modeling tools). Use consistent naming and provide clear tooltips.
-- **Document Management**: Always check for active design and document before operations. Handle saving with appropriate commit messages.
-- **Performance**: Process bodies and components efficiently. Avoid unnecessary operations on large assemblies.
-- **User Feedback**: Provide clear progress messages and results. Use input boxes for optional user input.
-- **Versioning**: Consider file versioning when renaming bodies to maintain synchronization.
-- **Testing**: Test in various scenarios (new files, existing designs, different component structures).
-- **Backwards Compatibility**: Use stable API features and handle API changes gracefully.
-
-### Fusion 360 Code Patterns
-
-- Use `adsk.fusion.Design.cast(app.activeProduct)` to get the active design
-- Iterate through `design.allComponents` for body operations
-- Access bodies via `comp.bRepBodies`
-- Use `doc.save(commitMessage)` for saving with version control
-- Handle both underscore and dash separators for flexibility
-
-### Documentation Standards
-
-- Maintain comprehensive inline documentation
-- Update comments when code changes
-- Document all function parameters and return values
-- Include usage examples where appropriate
-- Keep README files current and accurate, but confirm all changes to the readme file with the user.
-
-### Code Quality Guidelines
-
-- Write clear, readable code with meaningful variable names
-- Follow established coding patterns within the project
-- Implement proper error handling
-- Write testable code with clear interfaces
-- Maintain consistent formatting and style
-
-### Change Management
-
-- Make one logical change per modification
-- Test changes before suggesting implementation
-- Preserve existing functionality unless explicitly asked to change it
-- Explain the reasoning behind suggested changes
-- Provide rollback information when making significant changes
-
-### Collaboration Standards
-
-- Respect existing architectural decisions
-- Ask for clarification when requirements are ambiguous
-- Suggest alternatives when appropriate, but don't insist
-- Consider the impact of changes on the broader codebase
-- Maintain backwards compatibility unless breaking changes are explicitly requested
+**Repository:** `dpx_FusionVersioning`  
+**Type:** Fusion 360 Add-In (Python)  
+**Purpose:** Automated version tagging for components and bodies in Fusion 360 designs
 
 ---
 
-*These instructions help ensure consistent, high-quality AI assistance throughout the development process.*
+## Goals
+
+**Primary Goal:** Keep Fusion 360 component and body names synchronized with file version numbers.
+
+**The Problem It Solves:** When iterating on a Fusion 360 design, the file version increments (v1, v2, v3...), but components and bodies have no indication of which version they belong to. This makes it hard to track what's current, especially when exporting or referencing parts.
+
+---
+
+## Features
+
+- **Prefix Detection:** Automatically extracts filename prefix (first 3 characters + underscore)
+- **Selective Tagging:** Only tags components/bodies that match the file's naming convention
+- **Version Sync:** Uses `file version + 1` to stay synchronized after save
+- **Separator Support:** Handles both underscore (`_`) and dash (`-`) separators
+- **Smart Tag Replacement:** Replaces existing `_v#` tags (only matches `_v` followed by digits at end)
+- **Auto-Save:** Saves after renaming to maintain version sync
+- **Root Component Safety:** Skips root component (Fusion doesn't allow renaming it)
+
+---
+
+## Workflow
+
+1. User clicks "DPX Versioning" button in the Modify panel
+2. Script extracts prefix from filename (e.g., `dpx_widget.f3d` → `dpx_`)
+3. Finds all components and bodies starting with that prefix
+4. Renames them with next version number (current version + 1)
+5. Prompts for optional commit message
+6. Saves the file so versions stay in sync
+
+---
+
+## Examples
+
+**Before:**
+- File: `dpx_widget.f3d` (version 3)
+- Components: `dpx_lever`, `dpx_bracket_v2`, `dpx_vertical_mount`
+- Bodies: `dpx_base`, `std_screw`
+
+**After running DPX Versioning:**
+- Components: `dpx_lever_v4`, `dpx_bracket_v4`, `dpx_vertical_mount_v4`
+- Bodies: `dpx_base_v4`, `std_screw` (unchanged - wrong prefix)
+- File saves and becomes version 4
+
+---
+
+## Technical Notes
+
+### Version Tag Pattern
+The regex `^(.+)_v(\d+)$` is used to strip existing version tags:
+- Matches `_v` followed by **digits only** at the **end** of the name
+- `dpx_lever_v7` → base name: `dpx_lever` ✓
+- `dpx_vertical_mount` → base name: `dpx_vertical_mount` ✓ (no version tag)
+- `dpx_valve_v12` → base name: `dpx_valve` ✓
+
+### Root Component
+- Fusion 360 does not allow renaming the root component
+- The script explicitly skips `design.rootComponent`
+- Bodies inside the root component CAN be renamed
+
+### Event Handler Pattern
+- All event handlers stored in global `handlers` list
+- Prevents garbage collection during execution
+- Standard Fusion 360 add-in pattern
+
+---
+
+## File Structure
+
+```
+dpx_FusionVersioning/
+├── dpxVersioning.py          # Main add-in code
+├── dpxVersioning.manifest    # Fusion 360 manifest
+├── CHANGELOG.md              # Version history
+├── README.md                 # User documentation
+├── resources/                # Icons (16x16, 32x32 PNG)
+└── .github/
+    └── copilot-instructions.md  # AI coding guidelines
+```
+
+---
+
+## AI Development Guidelines
+
+### Ground Rules
+- No modifications to working code without explicit request
+- Comprehensive commenting and preservation of existing comments
+- Small, incremental changes to maintain stability
+- Stay focused on current task - don't jump ahead
+- Document all changes in CHANGELOG.md (not in .py file)
+
+### Fusion 360 Specifics
+- Always use `adsk.core.Application.get()` to access the app
+- Keep event handlers in global list to prevent GC
+- Wrap operations in try-except with `ui.messageBox()` for errors
+- Check for active design/document before operations
+- Use `doc.save(commitMessage)` for version control integration
+
+### Code Patterns
+```python
+# Get active design
+design = adsk.fusion.Design.cast(app.activeProduct)
+
+# Iterate components (skip root)
+for comp in design.allComponents:
+    if comp == design.rootComponent:
+        continue
+    # process component...
+
+# Access bodies
+for body in comp.bRepBodies:
+    # process body...
+
+# Version tag regex (matches _v followed by digits at END only)
+match = re.match(r'^(.+)_v(\d+)$', name)
+baseName = match.group(1) if match else name
+```
+
+---
+
+## Future Considerations
+
+- `rename_bodies` flag exists for potential toggle (currently always True)
+- Could add UI options for prefix customization
+- Could support batch processing multiple files
+- Could add undo functionality

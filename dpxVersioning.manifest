@@ -4,10 +4,10 @@
 	"id":"dpxVersioning",
 	"author":"DPX Team",
 	"description":{
-		"":"DPX versioning tool - automatically tags bodies based on filename prefix",
-		"en":"DPX company versioning tool - automatically tags bodies based on filename prefix"
+		"":"DPX versioning tool - tags components and bodies with file version numbers",
+		"en":"DPX company versioning tool - tags components and bodies with file version numbers"
 	},
-	"version":"1.0",
+	"version":"1.0.9",
 	"runOnStartup":true,
 	"supportedOS":"windows|mac",
 	"editEnabled":true
