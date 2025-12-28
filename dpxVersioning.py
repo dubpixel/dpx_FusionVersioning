@@ -45,33 +45,283 @@ import re
 import os
 
 # Add-in version
-VERSION = "1.0.9"
+VERSION = "1.1.4"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
 handlers = []
 
 
+def matches_prefix(name, file_prefix):
+    """
+    Check if a name matches the file prefix (supports both _ and - separators).
+    
+    Args:
+        name: The component or body name to check
+        file_prefix: The prefix to match (e.g., "dpx_")
+    
+    Returns:
+        bool: True if name matches prefix
+    """
+    if not name:
+        return False
+    
+    # Strip version tag first to get base name
+    match = re.match(r'^(.+)_v(\d+)$', name)
+    base_name = match.group(1) if match else name
+    base_name_lower = base_name.lower()
+    
+    prefix_with_dash = file_prefix.replace('_', '-')
+    return base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)
+
+
 def export_bodies(design, file_prefix, ui):
     """
-    Export bodies matching the prefix to STL files.
+    Export tagged components/bodies via 3D Print command.
+    
+    Export Rules:
+    - Tagged components/bodies are made visible and exported
+    - If a tagged item is INSIDE another tagged component and turned off,
+      leave it off for the parent export (will get its own sub-export)
+    - Untagged bodies inside tagged components should be made visible
     
     Args:
         design: The active Fusion design
         file_prefix: The prefix to match (e.g., "dpx_")
         ui: The Fusion UI object for dialogs
-    
-    TODO: Implement export logic
     """
-    # Placeholder for export functionality
-    ui.messageBox(
-        f'Export functionality coming soon.\n\n'
-        f'Would export all "{file_prefix}" bodies to STL.'
-    )
-    # TODO: Implement actual export logic here
-    # - Get export folder from user
-    # - Iterate through bodies matching prefix
-    # - Export each as STL
+    try:
+        app = adsk.core.Application.get()
+        
+        # Collect all tagged components and bodies
+        tagged_components = []
+        tagged_bodies = []
+        
+        rootComp = design.rootComponent
+        
+        # First pass: identify all tagged items
+        for comp in design.allComponents:
+            if comp == rootComp:
+                continue
+            if matches_prefix(comp.name, file_prefix):
+                tagged_components.append(comp)
+            
+            # Check bodies in this component
+            for body in comp.bRepBodies:
+                if body and matches_prefix(body.name, file_prefix):
+                    tagged_bodies.append(body)
+        
+        # Also check root component bodies
+        for body in rootComp.bRepBodies:
+            if body and matches_prefix(body.name, file_prefix):
+                tagged_bodies.append(body)
+        
+        # Store original visibility states so we can restore later
+        original_visibility = {}
+        
+        # Track what we'll export
+        items_to_export = []
+        
+        # Process tagged components
+        for comp in tagged_components:
+            # Find the occurrence(s) of this component
+            for occ in rootComp.allOccurrences:
+                if occ.component == comp:
+                    original_visibility[occ.entityToken] = occ.isLightBulbOn
+                    items_to_export.append({
+                        'type': 'component',
+                        'occurrence': occ,
+                        'name': comp.name
+                    })
+        
+        # Process tagged bodies (that aren't inside tagged components)
+        for body in tagged_bodies:
+            # Check if this body's parent component is tagged
+            parent_comp = body.parentComponent
+            parent_is_tagged = parent_comp != rootComp and matches_prefix(parent_comp.name, file_prefix)
+            
+            if not parent_is_tagged:
+                original_visibility[body.entityToken] = body.isLightBulbOn
+                items_to_export.append({
+                    'type': 'body',
+                    'body': body,
+                    'name': body.name
+                })
+        
+        # Show summary of what will be exported
+        comp_count = len([x for x in items_to_export if x['type'] == 'component'])
+        body_count = len([x for x in items_to_export if x['type'] == 'body'])
+        
+        if len(items_to_export) == 0:
+            ui.messageBox(f'No tagged items found to export.\n\nPrefix: {file_prefix}')
+            return
+        
+        # List items to export
+        export_list = "\n".join([f"  • {item['name']}" for item in items_to_export[:10]])
+        if len(items_to_export) > 10:
+            export_list += f"\n  ... and {len(items_to_export) - 10} more"
+        
+        result = ui.messageBox(
+            f'DPX Export Preview\n\n'
+            f'Found {comp_count} components and {body_count} bodies to export:\n'
+            f'{export_list}\n\n'
+            f'Continue with export?',
+            'DPX Version + Export',
+            adsk.core.MessageBoxButtonTypes.YesNoButtonType
+        )
+        
+        if result != adsk.core.DialogResults.DialogYes:
+            return
+        
+        # Track export results
+        exported_count = 0
+        failed_items = []
+        
+        # Get the export manager for direct STL export
+        exportMgr = design.exportManager
+        
+        # Get the directory to save exports (same as the Fusion file location)
+        # Use the document's dataFile to get the project folder
+        doc = app.activeDocument
+        
+        # Ask user for export directory
+        folderDialog = ui.createFolderDialog()
+        folderDialog.title = 'Select Export Folder for STL Files'
+        
+        dialogResult = folderDialog.showDialog()
+        if dialogResult != adsk.core.DialogResults.DialogOK:
+            ui.messageBox('Export cancelled.')
+            return
+        
+        exportPath = folderDialog.folder
+        
+        # Build a set of tagged component names for quick lookup
+        tagged_comp_names = set(comp.name for comp in tagged_components)
+        tagged_body_names = set(body.name for body in tagged_bodies)
+        
+        # Export each item one at a time
+        for item in items_to_export:
+            try:
+                if item['type'] == 'component':
+                    # Export component via its occurrence
+                    occ = item['occurrence']
+                    comp = occ.component
+                    
+                    # Track visibility changes for this export
+                    visibility_changes = []
+                    
+                    # Make the occurrence visible
+                    if not occ.isLightBulbOn:
+                        visibility_changes.append(('occ', occ, False))
+                        occ.isLightBulbOn = True
+                    
+                    # Handle children visibility:
+                    # - UNTAGGED bodies/components → make visible (included in parent export)
+                    # - TAGGED bodies/components → keep/set hidden (get their own export)
+                    
+                    # Handle bodies in this component
+                    for body in comp.bRepBodies:
+                        is_tagged = matches_prefix(body.name, file_prefix)
+                        original_state = body.isLightBulbOn
+                        
+                        if is_tagged:
+                            # Tagged body - hide it for parent export (gets own export)
+                            if body.isLightBulbOn:
+                                visibility_changes.append(('body', body, True))
+                                body.isLightBulbOn = False
+                        else:
+                            # Untagged body - make visible for parent export
+                            if not body.isLightBulbOn:
+                                visibility_changes.append(('body', body, False))
+                                body.isLightBulbOn = True
+                    
+                    # Handle child occurrences (sub-components)
+                    for childOcc in occ.childOccurrences:
+                        is_tagged = matches_prefix(childOcc.component.name, file_prefix)
+                        
+                        if is_tagged:
+                            # Tagged sub-component - hide it for parent export (gets own export)
+                            if childOcc.isLightBulbOn:
+                                visibility_changes.append(('childOcc', childOcc, True))
+                                childOcc.isLightBulbOn = False
+                        else:
+                            # Untagged sub-component - make visible for parent export
+                            if not childOcc.isLightBulbOn:
+                                visibility_changes.append(('childOcc', childOcc, False))
+                                childOcc.isLightBulbOn = True
+                    
+                    # Create STL export options for the component
+                    stlOptions = exportMgr.createSTLExportOptions(comp)
+                    stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                    
+                    # Set the filename using the item name
+                    filename = os.path.join(exportPath, f"{item['name']}.stl")
+                    stlOptions.filename = filename
+                    
+                    # Execute the export
+                    exportMgr.execute(stlOptions)
+                    exported_count += 1
+                    
+                    # Restore visibility for this component's children
+                    for change_type, obj, original_state in visibility_changes:
+                        if change_type == 'occ':
+                            obj.isLightBulbOn = original_state
+                        elif change_type == 'body':
+                            obj.isLightBulbOn = original_state
+                        elif change_type == 'childOcc':
+                            obj.isLightBulbOn = original_state
+                    
+                elif item['type'] == 'body':
+                    # Export body directly
+                    body = item['body']
+                    original_body_state = body.isLightBulbOn
+                    
+                    # Make the body visible
+                    if not body.isLightBulbOn:
+                        body.isLightBulbOn = True
+                    
+                    # Create STL export options for the body
+                    stlOptions = exportMgr.createSTLExportOptions(body)
+                    stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                    
+                    # Set the filename using the item name
+                    filename = os.path.join(exportPath, f"{item['name']}.stl")
+                    stlOptions.filename = filename
+                    
+                    # Execute the export
+                    exportMgr.execute(stlOptions)
+                    exported_count += 1
+                    
+                    # Restore body visibility
+                    body.isLightBulbOn = original_body_state
+                    
+            except Exception as e:
+                failed_items.append(f"{item['name']} ({str(e)})")
+        
+        # Restore original occurrence visibility
+        for item in items_to_export:
+            try:
+                if item['type'] == 'component':
+                    occ = item['occurrence']
+                    token = occ.entityToken
+                    if token in original_visibility:
+                        occ.isLightBulbOn = original_visibility[token]
+            except:
+                pass  # Item may have been deleted or modified
+        
+        # Show summary
+        summary = f'DPX Export Complete\n\n'
+        summary += f'Exported: {exported_count} STL files to:\n{exportPath}\n'
+        if failed_items:
+            summary += f'\nFailed ({len(failed_items)}):\n'
+            summary += '\n'.join([f'  • {f}' for f in failed_items[:5]])
+            if len(failed_items) > 5:
+                summary += f'\n  ... and {len(failed_items) - 5} more'
+        
+        ui.messageBox(summary)
+        
+    except:
+        ui.messageBox(f'Export failed:\n{traceback.format_exc()}')
 
 
 def run(context):
@@ -279,6 +529,12 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             component_renamed_count = 0
             component_skipped_count = 0
             
+            # Debug info collection
+            debug_info = []
+            debug_info.append(f"File prefix: '{file_prefix}'")
+            debug_info.append(f"Next version: v{nextVerNum}")
+            debug_info.append("")
+            
             # Get reference to root component (cannot be renamed in Fusion 360)
             rootComp = design.rootComponent
             
@@ -286,6 +542,7 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             for comp in design.allComponents:
                 # Skip the root component - it cannot be renamed in Fusion 360
                 if comp == rootComp:
+                    debug_info.append(f"[COMP] SKIP ROOT: {comp.name}")
                     continue
                     
                 # Rename component if it matches the prefix
@@ -302,31 +559,41 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                     base_name_lower = baseName.lower()
                     prefix_with_dash = file_prefix.replace('_', '-')
                     
-                    matches_prefix = base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)
+                    matches = base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)
                     
-                    if matches_prefix:
+                    debug_info.append(f"[COMP] '{current_name}' → base='{baseName}' lower='{base_name_lower}' prefix='{file_prefix}' match={matches}")
+                    
+                    if matches:
                         new_name = f"{baseName}_v{nextVerNum}"
                         
-                        # Only rename if the name is actually different
-                        if comp.name != new_name:
-                            try:
-                                comp.name = new_name
-                                component_renamed_count += 1
-                            except RuntimeError as e:
-                                # Catch any unexpected runtime errors during rename
-                                if "root component" in str(e).lower():
-                                    # Skip root component renaming (backup catch)
-                                    pass
-                                else:
-                                    raise
+                        # ALWAYS set the name - no skip logic
+                        # This ensures sync even if it appears to already match
+                        try:
+                            old_name = comp.name
+                            comp.name = new_name
+                            component_renamed_count += 1
+                            if old_name == new_name:
+                                debug_info.append(f"  → SET to '{new_name}' (was already same)")
+                            else:
+                                debug_info.append(f"  → RENAMED '{old_name}' to '{new_name}'")
+                        except RuntimeError as e:
+                            debug_info.append(f"  → ERROR: {str(e)}")
+                            # Catch any unexpected runtime errors during rename
+                            if "root component" in str(e).lower():
+                                # Skip root component renaming (backup catch)
+                                pass
+                            else:
+                                raise
                     else:
                         component_skipped_count += 1
+                        debug_info.append(f"  → SKIPPED (no prefix match)")
                 
                 # Rename bodies within the component if enabled
                 if rename_bodies:
                     for body in comp.bRepBodies:
                         # Skip invalid bodies
                         if not body or not body.name:
+                            debug_info.append(f"  [BODY] SKIP: invalid body")
                             continue
                         
                         # Get the base name by removing any existing version suffix
@@ -340,22 +607,70 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                         base_name_lower = baseName.lower()
                         prefix_with_dash = file_prefix.replace('_', '-')
                         
+                        matches = base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)
+                        
+                        debug_info.append(f"  [BODY] '{current_name}' → base='{baseName}' lower='{base_name_lower}' match={matches}")
+                        
                         # Skip bodies that don't match our file prefix
-                        if not (base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)):
+                        if not matches:
                             skipped_count += 1
+                            debug_info.append(f"    → SKIPPED (no prefix match)")
                             continue
                         
                         # Create the new name with the next version number
                         new_name = f"{baseName}_v{nextVerNum}"
                         
-                        # Only rename if the name is actually different
-                        # This avoids unnecessary changes and potential issues
-                        if body.name != new_name:
-                            body.name = new_name
-                            renamed_count += 1
+                        # ALWAYS set the name - no skip logic
+                        old_name = body.name
+                        body.name = new_name
+                        renamed_count += 1
+                        if old_name == new_name:
+                            debug_info.append(f"    → SET to '{new_name}' (was already same)")
+                        else:
+                            debug_info.append(f"    → RENAMED '{old_name}' to '{new_name}'")
+            
+            # Also check root component bodies
+            debug_info.append("")
+            debug_info.append("[ROOT COMPONENT BODIES]")
+            for body in rootComp.bRepBodies:
+                if not body or not body.name:
+                    continue
+                    
+                current_name = body.name
+                match = re.match(r'^(.+)_v(\d+)$', current_name)
+                baseName = match.group(1) if match else current_name
+                
+                base_name_lower = baseName.lower()
+                prefix_with_dash = file_prefix.replace('_', '-')
+                
+                matches = base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)
+                
+                debug_info.append(f"[BODY] '{current_name}' → base='{baseName}' lower='{base_name_lower}' match={matches}")
+                
+                if not matches:
+                    skipped_count += 1
+                    debug_info.append(f"  → SKIPPED (no prefix match)")
+                    continue
+                
+                new_name = f"{baseName}_v{nextVerNum}"
+                
+                # ALWAYS set the name - no skip logic
+                old_name = body.name
+                body.name = new_name
+                renamed_count += 1
+                if old_name == new_name:
+                    debug_info.append(f"  → SET to '{new_name}' (was already same)")
+                else:
+                    debug_info.append(f"  → RENAMED '{old_name}' to '{new_name}'")
             
             # Provide user feedback about what was processed
             total_renamed = renamed_count + component_renamed_count
+            
+            # Show debug info first
+            debug_text = "\n".join(debug_info[:40])  # Limit to 40 lines
+            if len(debug_info) > 40:
+                debug_text += f"\n... and {len(debug_info) - 40} more lines"
+            ui.messageBox(f'DEBUG INFO:\n\n{debug_text}', 'DPX Debug')
             
             ui.messageBox(
                 f'DPX Versioning v{VERSION}\n\n'

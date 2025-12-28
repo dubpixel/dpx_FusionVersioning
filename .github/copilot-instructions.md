@@ -133,3 +133,39 @@ baseName = match.group(1) if match else name
 - Could add UI options for prefix customization
 - Could support batch processing multiple files
 - Could add undo functionality
+
+---
+
+## Export Feature (DPX Version + Export)
+
+### Overview
+The export feature uses Fusion's "3D Print" command to export tagged items as STL files.
+
+### Export Rules
+1. **Export Command**: Uses Fusion's "3D Print" command (accessible via Cmd+P)
+2. **Tagged Items**: Any component or body matching the file prefix gets exported
+3. **Visibility Requirements**: Items must be visible to export
+   - Tagged items that are hidden should be made visible before export
+   - **Exception**: If a tagged item is INSIDE another tagged component AND turned off, 
+     leave it off for the parent export (it will get its own sub-export)
+   - Untagged bodies inside tagged components should be made visible before exporting the parent
+4. **Export Dialog**: Opens with default settings (don't modify options yet)
+5. **Filename Dialog**: After user runs 3D Print once manually, the local project directory 
+   is cached - just need to confirm/OK through the filename dialog
+
+### Visibility Logic
+```
+Tagged Component A (visible) 
+├── Tagged Body X (hidden) → Make visible, export with A
+├── Untagged Body Y (hidden) → Make visible for A's export
+└── Tagged Sub-Component B (hidden) → Leave hidden (gets own export)
+
+Tagged Component B (hidden)
+└── Bodies → Make B visible, export separately
+```
+
+### Implementation Notes
+- Store original visibility states before export
+- Restore visibility after export completes
+- Export items one at a time (select → 3D Print → save → next)
+- Track export successes/failures for summary

@@ -6,6 +6,21 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [1.1.0] - 2025-12-19
+
+**Export feature implementation**
+
+→ Added `matches_prefix()` helper function for reusable prefix matching  
+→ Implemented `export_bodies()` with 3D Print command integration  
+→ Collects tagged components and bodies, respecting visibility rules  
+→ Shows export preview with item list before proceeding  
+→ Makes items visible, selects them, and executes 3D Print command  
+→ Restores original visibility after export  
+→ Shows summary of exported/failed items  
+→ Updated copilot-instructions.md with export rules and visibility logic  
+
+---
+
 ## [1.0.9] - 2025-12-19
 
 **Two buttons instead of modifier keys**
