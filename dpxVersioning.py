@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "1.1.4"
+VERSION = "1.2.0"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -666,11 +666,12 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # Provide user feedback about what was processed
             total_renamed = renamed_count + component_renamed_count
             
-            # Show debug info first
-            debug_text = "\n".join(debug_info[:40])  # Limit to 40 lines
-            if len(debug_info) > 40:
-                debug_text += f"\n... and {len(debug_info) - 40} more lines"
-            ui.messageBox(f'DEBUG INFO:\n\n{debug_text}', 'DPX Debug')
+            # Debug info is collected but not shown by default
+            # Uncomment the lines below to see detailed rename operations:
+            # debug_text = "\n".join(debug_info[:40])  # Limit to 40 lines
+            # if len(debug_info) > 40:
+            #     debug_text += f"\n... and {len(debug_info) - 40} more lines"
+            # ui.messageBox(f'DEBUG INFO:\n\n{debug_text}', 'DPX Debug')
             
             ui.messageBox(
                 f'DPX Versioning v{VERSION}\n\n'
