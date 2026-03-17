@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "1.2.1"
+VERSION = "2.0.2"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.

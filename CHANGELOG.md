@@ -6,7 +6,7 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
-## [1.2.1] - 2026-03-17
+## [2.0.2] - 2026-03-17
 
 **stls arent exporting when i have components even tho it says i am**
 
