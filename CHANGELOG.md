@@ -6,6 +6,16 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.6] - 2026-03-17
+
+**you need to save, so the version prints correctly on the file. then export i think**
+
+→ Moved export call back to AFTER doc.save() instead of before — better user flow and file version is fully updated before export runs  
+→ Dialog sequence now: versioning summary → commit message prompt → save + "Document saved!" → export preview/execution  
+→ Previous order (export before save) was confusing and meant export dialogs appeared before "Document saved!" message  
+
+---
+
 ## [2.0.5] - 2026-03-17
 
 **it says no visible bodies to export**

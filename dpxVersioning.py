@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.0.5"
+VERSION = "2.0.6"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -693,11 +693,6 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                 f'Bodies: {renamed_count} Renamed, ({skipped_count} Skipped)'
             )
             
-            # If this is the "Version + Export" button, run export BEFORE saving
-            # so occurrence references are still valid when passed to exportMgr
-            if self.with_export:
-                export_bodies(design, file_prefix, ui)
-            
             # Save the document if any bodies/components were renamed
             # This keeps file version in sync with body version tags
             if total_renamed > 0:
@@ -737,6 +732,11 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                         ui.messageBox(f'Document saved! File is now version v{nextVerNum}\n(Note: Custom comment could not be saved)')
                     except:
                         ui.messageBox('Bodies renamed but failed to save document:\n{}'.format(traceback.format_exc()))
+            
+            # If this is the "Version + Export" button, run export AFTER saving
+            # so the file version is correct and all changes are persisted
+            if self.with_export:
+                export_bodies(design, file_prefix, ui)
             
         except:
             if ui:
