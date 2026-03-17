@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -250,8 +250,9 @@ def export_bodies(design, file_prefix, ui):
                                 visibility_changes.append(('childOcc', childOcc, False))
                                 childOcc.isLightBulbOn = True
                     
-                    # Create STL export options for the component
-                    stlOptions = exportMgr.createSTLExportOptions(comp)
+                    # Create STL export options for the occurrence (not the component definition)
+                    # Passing the occurrence gives Fusion the assembly context it needs to export geometry
+                    stlOptions = exportMgr.createSTLExportOptions(occ)
                     stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
                     
                     # Set the filename using the item name

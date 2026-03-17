@@ -6,6 +6,15 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [1.2.1] - 2026-03-17
+
+**stls arent exporting when i have components even tho it says i am**
+
+→ Fixed `export_bodies()` passing bare `Component` object to `createSTLExportOptions()` instead of the `Occurrence` — Fusion silently skips export when given the component definition rather than the placed instance  
+→ Changed `createSTLExportOptions(comp)` to `createSTLExportOptions(occ)` so assembly context (position, visibility) is correctly captured during STL export  
+
+---
+
 ## [1.1.0] - 2025-12-19
 
 **Export feature implementation**
