@@ -39,9 +39,9 @@
     <img src="images/logo.png" alt="Logo" height="120">
   </a>
 <h1 align="center">dpx_FusionVersioning</h1>
-<h3 align="center"><i>keep version tagging consistent in fusion360</i></h3>
+<h3 align="center"><i>keep body/component version tagging consistent in Fusion 360</i></h3>
   <p align="center">
-    scrapes 3 letter prefix xxx_ from filename and matches that to body name & applies version tagging based on file version number.
+    scrapes 3 letter prefix xxx_ from filename, matches components/bodies with that prefix, applies file-version+1 tags, and can export tagged STL files.
     <br />
      »  
      <a href="https://github.com/dubpixel/dpx_FusionVersioning"><strong>Project Here!</strong></a>
@@ -82,8 +82,12 @@
 <!-- ABOUT THE PROJECT -->
 <details>
 <summary><h3>About The Project</h3></summary>
-a dubpixel internal add-in for fusion360 to manage version tagging.
-the add on scraoes the 3 letter prefix xxx_ from filename and matches that to body names tagged with the same prefix. It then applies version+1 tagging based on the currentfile version number. Last, it autosaves the document.
+a dubpixel internal add-in for Fusion 360 to manage version tagging across components and bodies.
+the add-in scrapes the 3 letter prefix xxx_ from the filename and matches names that begin with that prefix (supports both underscore and dash separators). it then applies version+1 tagging based on the current file version number and autosaves to keep versions in sync.
+
+current workflow includes two commands in the Modify panel:
+1. DPX Versioning (tag + save)
+2. DPX Version + Export (tag + save + export tagged STL files)
 </br>
 
 *author: // www.dubpixel.tv  - i@dubpixel.tv* 
@@ -98,27 +102,35 @@ the add on scraoes the 3 letter prefix xxx_ from filename and matches that to bo
 ### Built With 
  
 * Python
+* Autodesk Fusion 360 API
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 <!-- GETTING STARTED -->
 
 ## Getting Started
 
-_Clone or download this repository. Uh maybe check if there is a release, first?_
+_Clone or download this repository. Maybe check releases first if you want a frozen build._
 
   ### Prerequisites
-  * An installation of Fusion360, installed in itsstandard directory.
+  * Fusion 360 installed (default location is easiest).
+  * A saved Fusion design file (required for version-aware tagging).
 
 
   ### Installation
 
-  1. Run ./install_addin.sh or install_addin.bat  depending on if you are running osx or windows. 
-  *NOTE*:the shell script is really meant for osx only. be sure to run the script locally inside the folders location when you download or clone it. do not move it. 
+  1. macOS: run `./install_addin.sh` from inside this repo folder.
+  2. Windows: run `install_addin.bat`.
+  3. Optional on macOS: `./install_addin_rsync.sh` for rsync-style copy with progress.
+  *NOTE*: scripts copy this folder into the Fusion AddIns directory.
 
-  2. In theory the manifest sets the add in to run on start but you may need to either activate the add on, or add it to your menu bar.
+  4. Manifest is set to run on startup, but you may still need to enable the add-in once in Fusion.
 
-  3. To activate the add in (if needed) - XXX
+  5. In Fusion: Utilities -> Add-Ins -> Scripts and Add-Ins -> Add-Ins tab.
 
-  4. To add to the menu bar - YYY
+  6. Find dpxVersioning, enable it, and set Run on Startup if desired.
+
+  7. Open the Design workspace and check Modify panel for:
+     - DPX Versioning
+     - DPX Version + Export
 
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -127,12 +139,17 @@ _Clone or download this repository. Uh maybe check if there is a release, first?
 ## Usage
 
    _in fusion360_
-1. Be sure to tag your filename with a 3 letter prefix followed by _
-ex: ZYX_filename. that is how the add in works. 
-2. tag your body with ZYX_ - like: ZYX_name_of_the_body_v00
-3 Click the button / run the add in, in Fusion360.
-4. It will prompt you to tell you what its doing.
-5. What its doing: ~~deleting your project.~~ er. i mean. it sniffs the prefix, then re-tags your bodies with the current version # + 1. 
+1. Name your Fusion file with a 3 letter prefix followed by underscore.
+  ex: `ZYX_filename`
+2. Name components/bodies with the same prefix.
+  ex: `ZYX_bracket`, `ZYX-body`, `ZYX_mount_v03`
+3. Click one of the buttons in Modify:
+  - DPX Versioning = retag + save
+  - DPX Version + Export = retag + save + STL export
+4. Script reads document version N and applies `_v(N+1)` to matching names.
+5. You get a save comment prompt (optional), then the file saves to keep version sync.
+6. Export mode prompts for folder, then exports tagged items as STL with visibility handling.
+7. Prefix matching supports both `_` and `-` separators.
 <!-- REFLECTION -->
 ## Reflection
 
@@ -141,15 +158,19 @@ ex: ZYX_filename. that is how the add in works.
 * what do we like/hate?
   - _that personal add-ins dont transfer with my account. wtf autodesk_
 * what would/could we do differently?
-  - _i want to expand this to components as well._
-  - _maybe have a supress save mode?_
+  - _component support is in now; next is better export naming in large assemblies._
+  - _maybe have a suppress save mode / dry-run mode._
 <!-- ROADMAP -->
 ## Roadmap
 
-- [x] basic re-tagging of body based on version+1 
-- [x] screen only objects with 3 letter prefix used in filename.
-    - [x] autosave after
-- [ ] extend to components
+- [x] basic re-tagging of body based on version+1
+- [x] screen only objects with 3 letter prefix used in filename
+- [x] autosave after tagging
+- [x] extend to components
+- [x] add second button for version+export
+- [x] export tagged components/bodies to STL
+- [ ] add guaranteed unique export filenames in all assemblies
+- [ ] add optional dry-run / no-save mode
 
 See the [open issues](https://github.com/dubpixel/dpx_FusionVersioning/issues) for a full list of proposed features (and known issues).
 
@@ -175,7 +196,7 @@ Don't forget to give the project a star! Thanks again!
 <!-- LICENSE -->
 ## License
 
-  Distributed under the UNLICENSE License. See `LICENSE.txt` for more information.
+  Distributed under the Unlicense. See `LICENSE.txt` for more information.
 <!-- CONTACT -->
 ## Contact
 
