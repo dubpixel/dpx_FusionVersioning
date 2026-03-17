@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.0.3"
+VERSION = "2.0.4"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -250,21 +250,38 @@ def export_bodies(design, file_prefix, ui):
                                 visibility_changes.append(('childOcc', childOcc, False))
                                 childOcc.isLightBulbOn = True
                     
-                    # Create STL export options for the occurrence (not the component definition)
-                    # Passing the occurrence gives Fusion the assembly context it needs to export geometry
-                    stlOptions = exportMgr.createSTLExportOptions(occ)
-                    stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                    # Collect all visible bodies from this component to export together
+                    # createSTLExportOptions expects bodies, not occurrences
+                    bodies_to_export = []
+                    for body in comp.bRepBodies:
+                        if body and body.isLightBulbOn:
+                            bodies_to_export.append(body)
                     
-                    # Set the filename using the item name
-                    filename = os.path.join(exportPath, f"{item['name']}.stl")
-                    stlOptions.filename = filename
-                    
-                    # Execute the export — check return value; Fusion returns False on silent failure
-                    success = exportMgr.execute(stlOptions)
-                    if success:
-                        exported_count += 1
+                    if len(bodies_to_export) == 0:
+                        failed_items.append(f"{item['name']} (no visible bodies to export)")
                     else:
-                        failed_items.append(f"{item['name']} (execute returned False — Fusion rejected the export)")
+                        # Create STL export options for the body/bodies
+                        if len(bodies_to_export) == 1:
+                            exportEntity = bodies_to_export[0]
+                        else:
+                            # Create a collection for multiple bodies
+                            exportEntity = adsk.core.ObjectCollection.create()
+                            for body in bodies_to_export:
+                                exportEntity.add(body)
+                        
+                        stlOptions = exportMgr.createSTLExportOptions(exportEntity)
+                        stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                        
+                        # Set the filename using the item name
+                        filename = os.path.join(exportPath, f"{item['name']}.stl")
+                        stlOptions.filename = filename
+                        
+                        # Execute the export — check return value; Fusion returns False on silent failure
+                        success = exportMgr.execute(stlOptions)
+                        if success:
+                            exported_count += 1
+                        else:
+                            failed_items.append(f"{item['name']} (execute returned False — Fusion rejected the export)")
                     
                     # Restore visibility for this component's children
                     for change_type, obj, original_state in visibility_changes:

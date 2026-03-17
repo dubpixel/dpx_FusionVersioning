@@ -6,6 +6,17 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.4] - 2026-03-17
+
+**fyi that still did not work**
+
+→ Fixed component export by passing body/bodies to `createSTLExportOptions()` instead of occurrence — API expects `BRepBody` or `ObjectCollection` of bodies, not `Occurrence` objects  
+→ For single body in component: pass the body directly  
+→ For multiple bodies in component: create `ObjectCollection.create()` and add all visible bodies  
+→ Added check for zero visible bodies and route to failed_items with descriptive message  
+
+---
+
 ## [2.0.3] - 2026-03-17
 
 **its not outputting STLS**

@@ -7,7 +7,7 @@
 		"":"DPX versioning tool - tags components and bodies with file version numbers",
 		"en":"DPX company versioning tool - tags components and bodies with file version numbers"
 	},
-	"version":"2.0.3",
+	"version":"2.0.4",
 	"runOnStartup":true,
 	"supportedOS":"windows|mac",
 	"editEnabled":true
