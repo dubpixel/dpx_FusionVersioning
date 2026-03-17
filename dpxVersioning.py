@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.0.2"
+VERSION = "2.0.3"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -259,9 +259,12 @@ def export_bodies(design, file_prefix, ui):
                     filename = os.path.join(exportPath, f"{item['name']}.stl")
                     stlOptions.filename = filename
                     
-                    # Execute the export
-                    exportMgr.execute(stlOptions)
-                    exported_count += 1
+                    # Execute the export — check return value; Fusion returns False on silent failure
+                    success = exportMgr.execute(stlOptions)
+                    if success:
+                        exported_count += 1
+                    else:
+                        failed_items.append(f"{item['name']} (execute returned False — Fusion rejected the export)")
                     
                     # Restore visibility for this component's children
                     for change_type, obj, original_state in visibility_changes:
@@ -289,9 +292,12 @@ def export_bodies(design, file_prefix, ui):
                     filename = os.path.join(exportPath, f"{item['name']}.stl")
                     stlOptions.filename = filename
                     
-                    # Execute the export
-                    exportMgr.execute(stlOptions)
-                    exported_count += 1
+                    # Execute the export — check return value; Fusion returns False on silent failure
+                    success = exportMgr.execute(stlOptions)
+                    if success:
+                        exported_count += 1
+                    else:
+                        failed_items.append(f"{item['name']} (execute returned False — Fusion rejected the export)")
                     
                     # Restore body visibility
                     body.isLightBulbOn = original_body_state
@@ -683,6 +689,11 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                 f'Bodies: {renamed_count} Renamed, ({skipped_count} Skipped)'
             )
             
+            # If this is the "Version + Export" button, run export BEFORE saving
+            # so occurrence references are still valid when passed to exportMgr
+            if self.with_export:
+                export_bodies(design, file_prefix, ui)
+            
             # Save the document if any bodies/components were renamed
             # This keeps file version in sync with body version tags
             if total_renamed > 0:
@@ -722,10 +733,6 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                         ui.messageBox(f'Document saved! File is now version v{nextVerNum}\n(Note: Custom comment could not be saved)')
                     except:
                         ui.messageBox('Bodies renamed but failed to save document:\n{}'.format(traceback.format_exc()))
-            
-            # If this is the "Version + Export" button, run export after versioning
-            if self.with_export:
-                export_bodies(design, file_prefix, ui)
             
         except:
             if ui:

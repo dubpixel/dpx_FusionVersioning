@@ -6,6 +6,16 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.3] - 2026-03-17
+
+**its not outputting STLS**
+
+→ Fixed `exportMgr.execute()` return value never being checked — Fusion silently returns `False` on export failure; code was always incrementing `exported_count` regardless, producing phantom success counts with zero actual files written  
+→ Both export branches (component via occurrence, standalone body) now check the return value and route `False` into `failed_items` with a descriptive message  
+→ Moved `export_bodies()` call to run *before* `doc.save()` — saving after renaming can invalidate occurrence references, causing Fusion to silently reject exports; export now runs while all object references are still valid  
+
+---
+
 ## [2.0.2] - 2026-03-17
 
 **stls arent exporting when i have components even tho it says i am**
