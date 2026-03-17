@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.0.4"
+VERSION = "2.0.5"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -215,27 +215,21 @@ def export_bodies(design, file_prefix, ui):
                         visibility_changes.append(('occ', occ, False))
                         occ.isLightBulbOn = True
                     
-                    # Handle children visibility:
-                    # - UNTAGGED bodies/components → make visible (included in parent export)
-                    # - TAGGED bodies/components → keep/set hidden (get their own export)
-                    
-                    # Handle bodies in this component
+                    # Collect ALL bodies from this component for export
+                    # Tagged bodies inside tagged components were already filtered out 
+                    # from getting their own export (lines ~140-147), so they should 
+                    # be included in the component export
+                    bodies_to_export = []
                     for body in comp.bRepBodies:
-                        is_tagged = matches_prefix(body.name, file_prefix)
-                        original_state = body.isLightBulbOn
-                        
-                        if is_tagged:
-                            # Tagged body - hide it for parent export (gets own export)
-                            if body.isLightBulbOn:
-                                visibility_changes.append(('body', body, True))
-                                body.isLightBulbOn = False
-                        else:
-                            # Untagged body - make visible for parent export
+                        if body:
+                            bodies_to_export.append(body)
+                            # Make body visible for export
                             if not body.isLightBulbOn:
                                 visibility_changes.append(('body', body, False))
                                 body.isLightBulbOn = True
                     
                     # Handle child occurrences (sub-components)
+                    # Tagged sub-components get their own export, so hide them
                     for childOcc in occ.childOccurrences:
                         is_tagged = matches_prefix(childOcc.component.name, file_prefix)
                         
@@ -250,15 +244,8 @@ def export_bodies(design, file_prefix, ui):
                                 visibility_changes.append(('childOcc', childOcc, False))
                                 childOcc.isLightBulbOn = True
                     
-                    # Collect all visible bodies from this component to export together
-                    # createSTLExportOptions expects bodies, not occurrences
-                    bodies_to_export = []
-                    for body in comp.bRepBodies:
-                        if body and body.isLightBulbOn:
-                            bodies_to_export.append(body)
-                    
                     if len(bodies_to_export) == 0:
-                        failed_items.append(f"{item['name']} (no visible bodies to export)")
+                        failed_items.append(f"{item['name']} (component has no bodies to export)")
                     else:
                         # Create STL export options for the body/bodies
                         if len(bodies_to_export) == 1:

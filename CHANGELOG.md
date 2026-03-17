@@ -6,6 +6,17 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.5] - 2026-03-17
+
+**it says no visible bodies to export**
+
+→ Fixed body collection logic — now collects ALL bodies from component before visibility manipulation, not after  
+→ Tagged bodies inside tagged components were already filtered out from separate export (first-pass logic), so they must be included in the component export  
+→ Previous logic hid tagged bodies then collected only visible ones, resulting in zero bodies collected even when bodies existed  
+→ New logic: collect all bodies from component, make them all visible for export, only hide tagged sub-components (which do get separate exports)  
+
+---
+
 ## [2.0.4] - 2026-03-17
 
 **fyi that still did not work**
