@@ -15,6 +15,29 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.0] - 2026-01-01
+
+**RTG - first stable production release**
+
+→ Marked as RTG (Ready To Go) — production-stable build  
+→ `debug_info` collection retained internally but display is commented out by default for minimal-noise UX  
+→ File and resource cleanup  
+
+---
+
+## [1.1.4] - 2025-12-28
+
+**Export STL overhaul + debug mode + always-rename enforcement**
+
+→ Rewrote `export_bodies()` to use `design.exportManager` + `createSTLExportOptions()` / `execute()` directly — replaced 3D Print command approach  
+→ Added `ui.createFolderDialog()` so user picks the STL destination folder per-export  
+→ Added `debug_info` array that logs per-item rename details (prefix, base name, match result) for diagnostics  
+→ Removed skip-if-already-correct logic — names are now **always** set unconditionally to guarantee version sync  
+→ Export visibility logic: tagged child items are hidden so they get their own export; untagged child items forced visible to be included in parent export  
+→ Visibility state fully restored after each export item  
+
+---
+
 ## [1.1.0] - 2025-12-19
 
 **Export feature implementation**
