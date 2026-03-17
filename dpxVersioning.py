@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "1.2.0"
+VERSION = "2.0.5"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -215,27 +215,21 @@ def export_bodies(design, file_prefix, ui):
                         visibility_changes.append(('occ', occ, False))
                         occ.isLightBulbOn = True
                     
-                    # Handle children visibility:
-                    # - UNTAGGED bodies/components → make visible (included in parent export)
-                    # - TAGGED bodies/components → keep/set hidden (get their own export)
-                    
-                    # Handle bodies in this component
+                    # Collect ALL bodies from this component for export
+                    # Tagged bodies inside tagged components were already filtered out 
+                    # from getting their own export (lines ~140-147), so they should 
+                    # be included in the component export
+                    bodies_to_export = []
                     for body in comp.bRepBodies:
-                        is_tagged = matches_prefix(body.name, file_prefix)
-                        original_state = body.isLightBulbOn
-                        
-                        if is_tagged:
-                            # Tagged body - hide it for parent export (gets own export)
-                            if body.isLightBulbOn:
-                                visibility_changes.append(('body', body, True))
-                                body.isLightBulbOn = False
-                        else:
-                            # Untagged body - make visible for parent export
+                        if body:
+                            bodies_to_export.append(body)
+                            # Make body visible for export
                             if not body.isLightBulbOn:
                                 visibility_changes.append(('body', body, False))
                                 body.isLightBulbOn = True
                     
                     # Handle child occurrences (sub-components)
+                    # Tagged sub-components get their own export, so hide them
                     for childOcc in occ.childOccurrences:
                         is_tagged = matches_prefix(childOcc.component.name, file_prefix)
                         
@@ -250,17 +244,31 @@ def export_bodies(design, file_prefix, ui):
                                 visibility_changes.append(('childOcc', childOcc, False))
                                 childOcc.isLightBulbOn = True
                     
-                    # Create STL export options for the component
-                    stlOptions = exportMgr.createSTLExportOptions(comp)
-                    stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
-                    
-                    # Set the filename using the item name
-                    filename = os.path.join(exportPath, f"{item['name']}.stl")
-                    stlOptions.filename = filename
-                    
-                    # Execute the export
-                    exportMgr.execute(stlOptions)
-                    exported_count += 1
+                    if len(bodies_to_export) == 0:
+                        failed_items.append(f"{item['name']} (component has no bodies to export)")
+                    else:
+                        # Create STL export options for the body/bodies
+                        if len(bodies_to_export) == 1:
+                            exportEntity = bodies_to_export[0]
+                        else:
+                            # Create a collection for multiple bodies
+                            exportEntity = adsk.core.ObjectCollection.create()
+                            for body in bodies_to_export:
+                                exportEntity.add(body)
+                        
+                        stlOptions = exportMgr.createSTLExportOptions(exportEntity)
+                        stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                        
+                        # Set the filename using the item name
+                        filename = os.path.join(exportPath, f"{item['name']}.stl")
+                        stlOptions.filename = filename
+                        
+                        # Execute the export — check return value; Fusion returns False on silent failure
+                        success = exportMgr.execute(stlOptions)
+                        if success:
+                            exported_count += 1
+                        else:
+                            failed_items.append(f"{item['name']} (execute returned False — Fusion rejected the export)")
                     
                     # Restore visibility for this component's children
                     for change_type, obj, original_state in visibility_changes:
@@ -288,9 +296,12 @@ def export_bodies(design, file_prefix, ui):
                     filename = os.path.join(exportPath, f"{item['name']}.stl")
                     stlOptions.filename = filename
                     
-                    # Execute the export
-                    exportMgr.execute(stlOptions)
-                    exported_count += 1
+                    # Execute the export — check return value; Fusion returns False on silent failure
+                    success = exportMgr.execute(stlOptions)
+                    if success:
+                        exported_count += 1
+                    else:
+                        failed_items.append(f"{item['name']} (execute returned False — Fusion rejected the export)")
                     
                     # Restore body visibility
                     body.isLightBulbOn = original_body_state
@@ -682,6 +693,11 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                 f'Bodies: {renamed_count} Renamed, ({skipped_count} Skipped)'
             )
             
+            # If this is the "Version + Export" button, run export BEFORE saving
+            # so occurrence references are still valid when passed to exportMgr
+            if self.with_export:
+                export_bodies(design, file_prefix, ui)
+            
             # Save the document if any bodies/components were renamed
             # This keeps file version in sync with body version tags
             if total_renamed > 0:
@@ -721,10 +737,6 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                         ui.messageBox(f'Document saved! File is now version v{nextVerNum}\n(Note: Custom comment could not be saved)')
                     except:
                         ui.messageBox('Bodies renamed but failed to save document:\n{}'.format(traceback.format_exc()))
-            
-            # If this is the "Version + Export" button, run export after versioning
-            if self.with_export:
-                export_bodies(design, file_prefix, ui)
             
         except:
             if ui:

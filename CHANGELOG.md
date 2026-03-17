@@ -6,6 +6,70 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.5] - 2026-03-17
+
+**it says no visible bodies to export**
+
+→ Fixed body collection logic — now collects ALL bodies from component before visibility manipulation, not after  
+→ Tagged bodies inside tagged components were already filtered out from separate export (first-pass logic), so they must be included in the component export  
+→ Previous logic hid tagged bodies then collected only visible ones, resulting in zero bodies collected even when bodies existed  
+→ New logic: collect all bodies from component, make them all visible for export, only hide tagged sub-components (which do get separate exports)  
+
+---
+
+## [2.0.4] - 2026-03-17
+
+**fyi that still did not work**
+
+→ Fixed component export by passing body/bodies to `createSTLExportOptions()` instead of occurrence — API expects `BRepBody` or `ObjectCollection` of bodies, not `Occurrence` objects  
+→ For single body in component: pass the body directly  
+→ For multiple bodies in component: create `ObjectCollection.create()` and add all visible bodies  
+→ Added check for zero visible bodies and route to failed_items with descriptive message  
+
+---
+
+## [2.0.3] - 2026-03-17
+
+**its not outputting STLS**
+
+→ Fixed `exportMgr.execute()` return value never being checked — Fusion silently returns `False` on export failure; code was always incrementing `exported_count` regardless, producing phantom success counts with zero actual files written  
+→ Both export branches (component via occurrence, standalone body) now check the return value and route `False` into `failed_items` with a descriptive message  
+→ Moved `export_bodies()` call to run *before* `doc.save()` — saving after renaming can invalidate occurrence references, causing Fusion to silently reject exports; export now runs while all object references are still valid  
+
+---
+
+## [2.0.2] - 2026-03-17
+
+**stls arent exporting when i have components even tho it says i am**
+
+→ Fixed `export_bodies()` passing bare `Component` object to `createSTLExportOptions()` instead of the `Occurrence` — Fusion silently skips export when given the component definition rather than the placed instance  
+→ Changed `createSTLExportOptions(comp)` to `createSTLExportOptions(occ)` so assembly context (position, visibility) is correctly captured during STL export  
+
+---
+
+## [2.0.0] - 2026-01-01
+
+**RTG - first stable production release**
+
+→ Marked as RTG (Ready To Go) — production-stable build  
+→ `debug_info` collection retained internally but display is commented out by default for minimal-noise UX  
+→ File and resource cleanup  
+
+---
+
+## [1.1.4] - 2025-12-28
+
+**Export STL overhaul + debug mode + always-rename enforcement**
+
+→ Rewrote `export_bodies()` to use `design.exportManager` + `createSTLExportOptions()` / `execute()` directly — replaced 3D Print command approach  
+→ Added `ui.createFolderDialog()` so user picks the STL destination folder per-export  
+→ Added `debug_info` array that logs per-item rename details (prefix, base name, match result) for diagnostics  
+→ Removed skip-if-already-correct logic — names are now **always** set unconditionally to guarantee version sync  
+→ Export visibility logic: tagged child items are hidden so they get their own export; untagged child items forced visible to be included in parent export  
+→ Visibility state fully restored after each export item  
+
+---
+
 ## [1.1.0] - 2025-12-19
 
 **Export feature implementation**
