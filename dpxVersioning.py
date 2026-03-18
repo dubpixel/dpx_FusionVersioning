@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.0.6"
+VERSION = "2.1.0"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -75,130 +75,194 @@ def matches_prefix(name, file_prefix):
     return base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)
 
 
-def export_bodies(design, file_prefix, ui):
+def _collect_export_items(design, file_prefix):
     """
-    Export tagged components/bodies via 3D Print command.
-    
-    Export Rules:
-    - Tagged components/bodies are made visible and exported
-    - If a tagged item is INSIDE another tagged component and turned off,
-      leave it off for the parent export (will get its own sub-export)
-    - Untagged bodies inside tagged components should be made visible
-    
+    Scan the design and return a flat list of export candidates matching file_prefix.
+
+    Each entry is a dict:
+        {'type': 'component', 'occurrence': occ, 'name': comp.name}
+      or
+        {'type': 'body', 'body': body, 'name': body.name}
+
+    Rules:
+    - Components: one entry per unique component (first occurrence only, de-duplicated).
+      A component placed multiple times would otherwise produce N identical STL filenames
+      that silently overwrite each other.
+    - Bodies: only top-level tagged bodies whose parent component is NOT itself tagged
+      (those are exported as part of the parent component's STL).
+    - Root component itself is never included (Fusion does not allow renaming it, and
+      exporting the entire root is rarely the intent).
+
     Args:
         design: The active Fusion design
         file_prefix: The prefix to match (e.g., "dpx_")
-        ui: The Fusion UI object for dialogs
+
+    Returns:
+        list: Ordered list of export-candidate dicts (components first, then bodies).
+    """
+    rootComp = design.rootComponent
+    items = []
+
+    # --- Pass 1: tagged components (de-duplicated to one occurrence each) ---
+    seen_comp_ids = set()
+    for comp in design.allComponents:
+        if comp == rootComp:
+            continue
+        if not matches_prefix(comp.name, file_prefix):
+            continue
+        # Avoid processing the same component definition twice
+        if id(comp) in seen_comp_ids:
+            continue
+        seen_comp_ids.add(id(comp))
+        # Find the FIRST occurrence of this component in the assembly
+        for occ in rootComp.allOccurrences:
+            if occ.component == comp:
+                items.append({
+                    'type': 'component',
+                    'occurrence': occ,
+                    'name': comp.name,
+                })
+                break  # first occurrence only — prevents duplicate STL filenames
+
+    # --- Pass 2: tagged bodies NOT inside a tagged component ---
+    # Collect tagged component defs for fast membership check
+    tagged_comp_set = set()
+    for comp in design.allComponents:
+        if comp != rootComp and matches_prefix(comp.name, file_prefix):
+            tagged_comp_set.add(id(comp))
+
+    # Check all components for tagged bodies.
+    # design.allComponents already includes the root component, so we do NOT
+    # append rootComp again — that would double-scan root-level bodies.
+    for comp in design.allComponents:
+        for body in comp.bRepBodies:
+            if not body or not matches_prefix(body.name, file_prefix):
+                continue
+            parent_comp = body.parentComponent
+            parent_is_tagged = (parent_comp != rootComp and
+                                id(parent_comp) in tagged_comp_set)
+            if not parent_is_tagged:
+                items.append({
+                    'type': 'body',
+                    'body': body,
+                    'name': body.name,
+                })
+
+    # Deduplicate by name: a body and a component may share the same name
+    # (e.g. component 'dpx_lever' whose geometry is also a root-level body
+    # 'dpx_lever'). The component entry was added first in Pass 1 and wins;
+    # the duplicate body entry from Pass 2 is silently dropped.
+    seen_names = set()
+    unique_items = []
+    for item in items:
+        if item['name'] not in seen_names:
+            seen_names.add(item['name'])
+            unique_items.append(item)
+    return unique_items
+
+
+def export_bodies(design, file_prefix, ui, items_to_export=None):
+    """
+    Export tagged components/bodies as STL files.
+
+    Export Rules:
+    - Tagged components/bodies are made visible and exported.
+    - A tagged body INSIDE a tagged component is NOT exported separately;
+      it is included in the parent component's STL.
+    - Untagged sub-components/bodies inside a tagged component are made
+      visible so they are captured in the parent STL.
+    - Tagged sub-components are hidden during the parent export so they
+      get their own separate STL.
+
+    Args:
+        design: The active Fusion design.
+        file_prefix: The prefix to match (e.g., "dpx_").
+        ui: The Fusion UI object for dialogs.
+        items_to_export: Optional pre-filtered list from the checkbox panel
+            (dicts as returned by _collect_export_items). When supplied the
+            scan and Yes/No preview dialog are skipped; names are refreshed
+            from live Fusion objects so STL filenames reflect any _vN suffix
+            applied by the versioning step that just ran.
+            When None (default / legacy path), the scan runs here and the
+            original Yes/No preview dialog is shown.
     """
     try:
         app = adsk.core.Application.get()
-        
-        # Collect all tagged components and bodies
-        tagged_components = []
-        tagged_bodies = []
-        
-        rootComp = design.rootComponent
-        
-        # First pass: identify all tagged items
-        for comp in design.allComponents:
-            if comp == rootComp:
-                continue
-            if matches_prefix(comp.name, file_prefix):
-                tagged_components.append(comp)
-            
-            # Check bodies in this component
-            for body in comp.bRepBodies:
-                if body and matches_prefix(body.name, file_prefix):
-                    tagged_bodies.append(body)
-        
-        # Also check root component bodies
-        for body in rootComp.bRepBodies:
-            if body and matches_prefix(body.name, file_prefix):
-                tagged_bodies.append(body)
-        
-        # Store original visibility states so we can restore later
+
+        # ── Determine what to export ─────────────────────────────────────────
+        if items_to_export is None:
+            # Legacy path: scan + Yes/No preview (used by rename-only button
+            # or if the commandCreated scan failed)
+            items_to_export = _collect_export_items(design, file_prefix)
+
+            if len(items_to_export) == 0:
+                ui.messageBox(f'No tagged items found to export.\n\nPrefix: {file_prefix}')
+                return
+
+            comp_count = sum(1 for x in items_to_export if x['type'] == 'component')
+            body_count = sum(1 for x in items_to_export if x['type'] == 'body')
+            export_list = '\n'.join(f"  • {item['name']}" for item in items_to_export[:10])
+            if len(items_to_export) > 10:
+                export_list += f"\n  ... and {len(items_to_export) - 10} more"
+
+            result = ui.messageBox(
+                f'DPX Export Preview\n\n'
+                f'Found {comp_count} components and {body_count} bodies to export:\n'
+                f'{export_list}\n\n'
+                f'Continue with export?',
+                'DPX Version + Export',
+                adsk.core.MessageBoxButtonTypes.YesNoButtonType,
+            )
+            if result != adsk.core.DialogResults.DialogYes:
+                return
+        else:
+            # Interactive path: items already chosen via checkboxes.
+            if len(items_to_export) == 0:
+                ui.messageBox('No items selected for export.')
+                return
+            # Refresh names from live Fusion objects so that the _vN suffix
+            # applied by the preceding versioning step is reflected in STL
+            # filenames. The object references themselves remain valid.
+            for item in items_to_export:
+                try:
+                    if item['type'] == 'component':
+                        item['name'] = item['occurrence'].component.name
+                    elif item['type'] == 'body':
+                        item['name'] = item['body'].name
+                except Exception:
+                    pass  # keep the pre-versioning name as fallback
+
+        # ── Snapshot original visibility so we can restore later ─────────────
         original_visibility = {}
-        
-        # Track what we'll export
-        items_to_export = []
-        
-        # Process tagged components
-        for comp in tagged_components:
-            # Find the occurrence(s) of this component
-            for occ in rootComp.allOccurrences:
-                if occ.component == comp:
+        for item in items_to_export:
+            try:
+                if item['type'] == 'component':
+                    occ = item['occurrence']
                     original_visibility[occ.entityToken] = occ.isLightBulbOn
-                    items_to_export.append({
-                        'type': 'component',
-                        'occurrence': occ,
-                        'name': comp.name
-                    })
-        
-        # Process tagged bodies (that aren't inside tagged components)
-        for body in tagged_bodies:
-            # Check if this body's parent component is tagged
-            parent_comp = body.parentComponent
-            parent_is_tagged = parent_comp != rootComp and matches_prefix(parent_comp.name, file_prefix)
-            
-            if not parent_is_tagged:
-                original_visibility[body.entityToken] = body.isLightBulbOn
-                items_to_export.append({
-                    'type': 'body',
-                    'body': body,
-                    'name': body.name
-                })
-        
-        # Show summary of what will be exported
-        comp_count = len([x for x in items_to_export if x['type'] == 'component'])
-        body_count = len([x for x in items_to_export if x['type'] == 'body'])
-        
-        if len(items_to_export) == 0:
-            ui.messageBox(f'No tagged items found to export.\n\nPrefix: {file_prefix}')
-            return
-        
-        # List items to export
-        export_list = "\n".join([f"  • {item['name']}" for item in items_to_export[:10]])
-        if len(items_to_export) > 10:
-            export_list += f"\n  ... and {len(items_to_export) - 10} more"
-        
-        result = ui.messageBox(
-            f'DPX Export Preview\n\n'
-            f'Found {comp_count} components and {body_count} bodies to export:\n'
-            f'{export_list}\n\n'
-            f'Continue with export?',
-            'DPX Version + Export',
-            adsk.core.MessageBoxButtonTypes.YesNoButtonType
-        )
-        
-        if result != adsk.core.DialogResults.DialogYes:
-            return
-        
+                elif item['type'] == 'body':
+                    body = item['body']
+                    original_visibility[body.entityToken] = body.isLightBulbOn
+            except Exception:
+                pass
+
         # Track export results
         exported_count = 0
         failed_items = []
-        
+
         # Get the export manager for direct STL export
         exportMgr = design.exportManager
-        
-        # Get the directory to save exports (same as the Fusion file location)
-        # Use the document's dataFile to get the project folder
-        doc = app.activeDocument
-        
+
         # Ask user for export directory
         folderDialog = ui.createFolderDialog()
         folderDialog.title = 'Select Export Folder for STL Files'
-        
+
         dialogResult = folderDialog.showDialog()
         if dialogResult != adsk.core.DialogResults.DialogOK:
             ui.messageBox('Export cancelled.')
             return
-        
+
         exportPath = folderDialog.folder
-        
-        # Build a set of tagged component names for quick lookup
-        tagged_comp_names = set(comp.name for comp in tagged_components)
-        tagged_body_names = set(body.name for body in tagged_bodies)
-        
+
         # Export each item one at a time
         for item in items_to_export:
             try:
@@ -451,6 +515,8 @@ class DpxVersioningCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     """
     Event handler for when the DPX Versioning command is created.
     Sets up the execute event handler that runs when the button is clicked.
+    For the 'Version + Export' button it also populates a native command
+    panel with one BoolValueCommandInput checkbox per tagged export candidate.
     """
     def __init__(self, with_export=False):
         super().__init__()
@@ -458,19 +524,78 @@ class DpxVersioningCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
     def notify(self, args):
         """
-        Called when the command is created. Sets up the execute handler.
-        
+        Called when the command is created. Wires the execute handler and,
+        when with_export=True, scans the design and builds the checkbox panel.
+
         Args:
             args: Command creation event arguments
         """
         try:
-            # Connect to the execute event - this runs when user clicks the button
             cmd = args.command
             onExecute = DpxVersioningCommandExecuteHandler(with_export=self.with_export)
             cmd.execute.add(onExecute)
             handlers.append(onExecute)  # Keep handler in scope
 
-        except:
+            # ── Checkbox panel (Version + Export button only) ─────────────────
+            if not self.with_export:
+                return
+
+            try:
+                app = adsk.core.Application.get()
+                design = adsk.fusion.Design.cast(app.activeProduct)
+                if not design:
+                    return
+                doc = app.activeDocument
+                if not doc or not doc.dataFile:
+                    # Unsaved doc — execute will show the proper error; skip panel
+                    return
+
+                # Derive prefix the same way execute does
+                filename = doc.name
+                if '_' in filename:
+                    file_prefix = filename.split('_')[0].lower()[:3] + '_'
+                else:
+                    file_prefix = filename.lower()[:3] + '_'
+
+                candidates = _collect_export_items(design, file_prefix)
+                onExecute.export_items = candidates  # pass scan result to execute
+
+                inputs = cmd.commandInputs
+
+                if len(candidates) == 0:
+                    # Still open the panel but tell the user nothing was found
+                    inputs.addTextBoxCommandInput(
+                        'dpx_no_items',
+                        '',
+                        f'No tagged items found for prefix  "{file_prefix}".',
+                        2,
+                        True,
+                    )
+                    return
+
+                # Single flat list — check items you want exported as STL.
+                # All tagged items get versioned regardless; these checkboxes
+                # only control which ones produce an STL file.
+                grp = inputs.addGroupCommandInput(
+                    'grp_export',
+                    f'Select to export  ({len(candidates)})',
+                )
+                grp.isExpanded = True
+                for idx, item in enumerate(candidates):
+                    grp.children.addBoolValueInput(
+                        f'dpx_export_{idx}',
+                        item['name'],
+                        True,   # is a checkbox
+                        '',     # no resource icon
+                        True,   # default: checked
+                    )
+
+            except Exception:
+                # Panel build failure is non-fatal: execute will fall back to
+                # the legacy Yes/No preview path automatically.
+                pass
+
+        except Exception:
             app = adsk.core.Application.get()
             ui = app.userInterface
             ui.messageBox('Failed to create DPX Versioning command:\n{}'.format(traceback.format_exc()))
@@ -483,6 +608,9 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
     def __init__(self, with_export=False):
         super().__init__()
         self.with_export = with_export
+        # Populated by DpxVersioningCommandCreatedHandler when the checkbox
+        # panel is built successfully. None means fall back to legacy path.
+        self.export_items = None
 
     def notify(self, args):
         """
@@ -736,7 +864,20 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # If this is the "Version + Export" button, run export AFTER saving
             # so the file version is correct and all changes are persisted
             if self.with_export:
-                export_bodies(design, file_prefix, ui)
+                if self.export_items is not None:
+                    # Interactive path: read checkbox states set by the user
+                    inputs = args.command.commandInputs
+                    selected = []
+                    for idx, item in enumerate(self.export_items):
+                        cb = inputs.itemById(f'dpx_export_{idx}')
+                        # If the input is missing (panel build partial failure),
+                        # treat it as checked so nothing is silently skipped.
+                        if cb is None or cb.value:
+                            selected.append(item)
+                    export_bodies(design, file_prefix, ui, selected)
+                else:
+                    # Legacy path: scan + Yes/No preview inside export_bodies
+                    export_bodies(design, file_prefix, ui)
             
         except:
             if ui:
