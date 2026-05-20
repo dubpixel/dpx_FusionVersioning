@@ -6,6 +6,18 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.7] - 2026-05-19
+
+**it works sometimes but determines the geometry is invalid sometimes and wont output im not sure how and why**
+
+→ Added geometry validation before attempting STL export — prevents intermittent silent failures  
+→ For component bodies: validates `body.isSolid`, checks `body.volume > 0`, filters out surface bodies and zero-volume geometry  
+→ For standalone bodies: validates solid status with early-exit and descriptive error ("surface body - not solid" or "zero volume - invalid geometry")  
+→ Updated error messages to be more specific ("no valid solid bodies - check for surfaces or zero volume" instead of generic "no bodies to export")  
+→ **Root cause**: Fusion's `exportMgr.execute()` returns False for surface bodies, degenerate geometry, and zero-volume shapes, but previous code attempted export without validation  
+
+---
+
 ## [2.0.6] - 2026-03-17
 
 **you need to save, so the version prints correctly on the file. then export i think**

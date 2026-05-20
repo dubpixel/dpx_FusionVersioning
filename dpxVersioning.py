@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.1.0"
+VERSION = "2.0.7"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -285,7 +285,8 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
                     # be included in the component export
                     bodies_to_export = []
                     for body in comp.bRepBodies:
-                        if body:
+                        # Validate body is exportable: must be solid, not construction, and have valid geometry
+                        if body and body.isSolid and not body.isVisible == False and body.volume > 0:
                             bodies_to_export.append(body)
                             # Make body visible for export
                             if not body.isLightBulbOn:
@@ -309,7 +310,7 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
                                 childOcc.isLightBulbOn = True
                     
                     if len(bodies_to_export) == 0:
-                        failed_items.append(f"{item['name']} (component has no bodies to export)")
+                        failed_items.append(f"{item['name']} (no valid solid bodies - check for surfaces or zero volume)")
                     else:
                         # Create STL export options for the body/bodies
                         if len(bodies_to_export) == 1:
@@ -347,6 +348,15 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
                     # Export body directly
                     body = item['body']
                     original_body_state = body.isLightBulbOn
+                    
+                    # Validate body is exportable
+                    if not body.isSolid:
+                        failed_items.append(f"{item['name']} (surface body - not solid)")
+                        continue
+                    
+                    if body.volume <= 0:
+                        failed_items.append(f"{item['name']} (zero volume - invalid geometry)")
+                        continue
                     
                     # Make the body visible
                     if not body.isLightBulbOn:
