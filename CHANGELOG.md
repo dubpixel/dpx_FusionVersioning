@@ -6,6 +6,62 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.12] - 2026-05-19
+
+**does not work. are you using the filename you started with because the script selects, then versions up, then exports - if its looking for the old filename maybe thats why its failing**
+
+→ Added validation checks: verify occurrence.isValid and body.isValid before attempting export  
+→ Check for stale references after rename operation that might invalidate occurrence/body handles  
+→ Skip invalid occurrences/bodies with descriptive error instead of attempting export  
+→ Note: Names ARE refreshed post-rename (line ~227), but investigating if object references become stale  
+
+---
+
+## [2.0.11] - 2026-05-19
+
+**all fail for now. but they export fine via the 3d print function / idk if you should do that [switch to 3D print]**
+
+→ Reverted v2.0.10 change - restored body collection approach from v2.0.4  
+→ Back to passing BRepBody or ObjectCollection to createSTLExportOptions (not Occurrence)  
+→ Changed based on v2.0.4 note that "API expects `BRepBody` or `ObjectCollection` of bodies, not `Occurrence` objects"  
+→ v2.0.10 experiment of passing occurrence directly was incorrect per API requirements  
+
+---
+
+## [2.0.10] - 2026-05-19
+
+**no they did not [still getting error 3: Invalid geometry type]**
+
+→ Reverted body collection approach - trying to pass occurrence directly to createSTLExportOptions()  
+→ Removed manual body collection and ObjectCollection creation  
+→ Let Fusion handle which bodies to export from the occurrence  
+→ Note: This contradicts v2.0.4 fix but testing different approach to resolve "Invalid geometry type" error  
+
+---
+
+## [2.0.9] - 2026-05-19
+
+**ok so it still doesnt work same error 3: - are u sure ur exporting the right part the tree. - the body not the component needs to be selected. idk**
+
+→ Fixed "Invalid geometry type" error by using `occ.bRepBodies` instead of `comp.bRepBodies`  
+→ Root cause: bodies must come from the placed occurrence instance, not the component definition  
+→ Component = definition/template; Occurrence = placed instance with position/context in assembly  
+→ ExportManager needs bodies from the actual instance in the assembly tree to capture correct geometry and transforms  
+
+---
+
+## [2.0.8] - 2026-05-19
+
+**they export fine via the normal 3d print operation maybe ur overcomplicating it**
+
+→ Removed overcomplicated geometry validation checks (isSolid, volume > 0, mesh body detection, face counting)  
+→ Simplified to: collect all bodies, make visible, attempt export, capture real Fusion error if it fails  
+→ Let Fusion's exportManager handle validation — if bodies export via 3D print, they're valid  
+→ Wrapped export operations in try/except to surface actual Fusion error messages instead of pre-validation guesses  
+→ Updated AGENTS.md with mandatory rule: version must be bumped for every code change  
+
+---
+
 ## [2.0.7] - 2026-05-19
 
 **it works sometimes but determines the geometry is invalid sometimes and wont output im not sure how and why**

@@ -2,6 +2,76 @@
 
 This document provides operational directives for AI coding assistants (GitHub Copilot, Claude Code, Cursor, etc.) working on dubpixel projects. These rules ensure consistent workflow automation, code quality, and documentation maintenance across all repositories.
 
+---
+
+## 0. Project Context: DPX Fusion Versioning Add-in
+
+**READ FIRST:** This is an Autodesk Fusion 360 add-in that synchronizes naming and file versions.
+
+### Core Functionality
+
+**What it does:**
+1. Version-tags matching components and bodies using the Fusion document version + 1
+2. Optionally exports matching items to STL files after versioning
+3. Matching is based on a filename-derived prefix and naming conventions
+
+**Current Version:** 1.2.0 (manifest version: 1.2.0)
+
+### Key Technical Details
+
+**Prefix and Version Matching:**
+- Prefix: First 3 letters of filename + underscore (e.g., `dpx_widget` → prefix `dpx_`)
+- Supports both `_` and `-` separators for matching
+- Version suffix regex: `^(.+)_v(\d+)$`
+- Only trailing `_v` + digits is treated as version suffix
+- Preserves names like `dpx_vertical_mount` correctly
+
+**Fusion API Architecture:**
+- Event handlers stored in global `handlers` list to prevent garbage collection
+- Root component cannot be renamed (Fusion limitation) and is explicitly skipped
+- Traverses `design.allComponents` for components, `comp.bRepBodies` for bodies
+- Export uses `design.exportManager` with STL options
+
+**Commands Added to Fusion UI:**
+- Both in Modify panel (`SolidModifyPanel`) of solid workspace
+- "DPX Versioning" - versioning only
+- "DPX Version + Export" - versioning + STL export
+
+### Known Constraints & Risks
+
+**HIGH RISK (don't modify without careful consideration):**
+- Event wiring and handler lifetime management
+- Fusion object traversal assumptions
+- Root component logic and save flow sequencing
+
+**MEDIUM RISK:**
+- Prefix derivation strategy
+- Visibility handling in export composition
+- Regex behavior for version stripping
+
+**LOW RISK (safe to edit):**
+- UI text and message boxes
+- Commit message format
+- Export preview formatting
+- Filename sanitization
+
+### Important Files
+
+- `dpxVersioning.py` - Main add-in code (entry points, handlers, versioning, export logic)
+- `dpxVersioning.manifest` - Fusion add-in metadata
+- `install_addin.sh` / `install_addin_rsync.sh` - macOS installers
+- `install_addin.bat` - Windows installer
+- `CHANGELOG.md` - Task-oriented change history
+- `CONTEXT.md` - Complete architectural documentation (READ THIS for deeper understanding)
+
+### Development Notes
+
+- Document must be saved (`doc.dataFile` exists) before versioning
+- Body names may not be globally unique; duplicate names can overwrite STL files
+- Visibility restore is best-effort and may skip deleted/invalid entities
+- Prefix logic is strict: 3-letter convention required
+
+**For complete details, always reference [CONTEXT.md](../CONTEXT.md).**
 
 ---
 
@@ -25,6 +95,8 @@ These actions are **required** and must happen automatically. **NEVER ask permis
 | Refactor | `refactor/component-name` | `refactor/docker-volumes` |
 
 ### Version Bumping
+
+**CRITICAL RULE: Version MUST be bumped for EVERY code change.** No exceptions.
 
 **BEFORE the first code change:**
 

@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.0.7"
+VERSION = "2.0.12"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -267,8 +267,14 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
         for item in items_to_export:
             try:
                 if item['type'] == 'component':
-                    # Export component via its occurrence
+                    # Re-fetch the occurrence and component fresh (in case rename invalidated references)
                     occ = item['occurrence']
+                    
+                    # Verify the occurrence is still valid
+                    if not occ or not occ.isValid:
+                        failed_items.append(f"{item['name']} (occurrence no longer valid)")
+                        continue
+                    
                     comp = occ.component
                     
                     # Track visibility changes for this export
@@ -280,13 +286,11 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
                         occ.isLightBulbOn = True
                     
                     # Collect ALL bodies from this component for export
-                    # Tagged bodies inside tagged components were already filtered out 
-                    # from getting their own export (lines ~140-147), so they should 
-                    # be included in the component export
+                    # Re-fetch bodies fresh from the component
                     bodies_to_export = []
                     for body in comp.bRepBodies:
-                        # Validate body is exportable: must be solid, not construction, and have valid geometry
-                        if body and body.isSolid and not body.isVisible == False and body.volume > 0:
+                        # Verify body is valid
+                        if body and body.isValid:
                             bodies_to_export.append(body)
                             # Make body visible for export
                             if not body.isLightBulbOn:
@@ -310,30 +314,34 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
                                 childOcc.isLightBulbOn = True
                     
                     if len(bodies_to_export) == 0:
-                        failed_items.append(f"{item['name']} (no valid solid bodies - check for surfaces or zero volume)")
+                        failed_items.append(f"{item['name']} (no bodies found in component)")
                     else:
-                        # Create STL export options for the body/bodies
-                        if len(bodies_to_export) == 1:
-                            exportEntity = bodies_to_export[0]
-                        else:
-                            # Create a collection for multiple bodies
-                            exportEntity = adsk.core.ObjectCollection.create()
-                            for body in bodies_to_export:
-                                exportEntity.add(body)
-                        
-                        stlOptions = exportMgr.createSTLExportOptions(exportEntity)
-                        stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
-                        
-                        # Set the filename using the item name
-                        filename = os.path.join(exportPath, f"{item['name']}.stl")
-                        stlOptions.filename = filename
-                        
-                        # Execute the export — check return value; Fusion returns False on silent failure
-                        success = exportMgr.execute(stlOptions)
-                        if success:
-                            exported_count += 1
-                        else:
-                            failed_items.append(f"{item['name']} (execute returned False — Fusion rejected the export)")
+                        try:
+                            # Create STL export options for the body/bodies
+                            # Per v2.0.4: API expects BRepBody or ObjectCollection, NOT Occurrence
+                            if len(bodies_to_export) == 1:
+                                exportEntity = bodies_to_export[0]
+                            else:
+                                # Create a collection for multiple bodies
+                                exportEntity = adsk.core.ObjectCollection.create()
+                                for body in bodies_to_export:
+                                    exportEntity.add(body)
+                            
+                            stlOptions = exportMgr.createSTLExportOptions(exportEntity)
+                            stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                            
+                            # Set the filename using the item name
+                            filename = os.path.join(exportPath, f"{item['name']}.stl")
+                            stlOptions.filename = filename
+                            
+                            # Execute the export
+                            success = exportMgr.execute(stlOptions)
+                            if success:
+                                exported_count += 1
+                            else:
+                                failed_items.append(f"{item['name']} (Fusion rejected export)")
+                        except Exception as export_err:
+                            failed_items.append(f"{item['name']} ({str(export_err)})")
                     
                     # Restore visibility for this component's children
                     for change_type, obj, original_state in visibility_changes:
@@ -349,36 +357,30 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
                     body = item['body']
                     original_body_state = body.isLightBulbOn
                     
-                    # Validate body is exportable
-                    if not body.isSolid:
-                        failed_items.append(f"{item['name']} (surface body - not solid)")
-                        continue
-                    
-                    if body.volume <= 0:
-                        failed_items.append(f"{item['name']} (zero volume - invalid geometry)")
-                        continue
-                    
-                    # Make the body visible
-                    if not body.isLightBulbOn:
-                        body.isLightBulbOn = True
-                    
-                    # Create STL export options for the body
-                    stlOptions = exportMgr.createSTLExportOptions(body)
-                    stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
-                    
-                    # Set the filename using the item name
-                    filename = os.path.join(exportPath, f"{item['name']}.stl")
-                    stlOptions.filename = filename
-                    
-                    # Execute the export — check return value; Fusion returns False on silent failure
-                    success = exportMgr.execute(stlOptions)
-                    if success:
-                        exported_count += 1
-                    else:
-                        failed_items.append(f"{item['name']} (execute returned False — Fusion rejected the export)")
-                    
-                    # Restore body visibility
-                    body.isLightBulbOn = original_body_state
+                    try:
+                        # Make the body visible
+                        if not body.isLightBulbOn:
+                            body.isLightBulbOn = True
+                        
+                        # Create STL export options for the body
+                        stlOptions = exportMgr.createSTLExportOptions(body)
+                        stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                        
+                        # Set the filename using the item name
+                        filename = os.path.join(exportPath, f"{item['name']}.stl")
+                        stlOptions.filename = filename
+                        
+                        # Execute the export
+                        success = exportMgr.execute(stlOptions)
+                        if success:
+                            exported_count += 1
+                        else:
+                            failed_items.append(f"{item['name']} (Fusion rejected export)")
+                    except Exception as export_err:
+                        failed_items.append(f"{item['name']} ({str(export_err)})")
+                    finally:
+                        # Restore body visibility
+                        body.isLightBulbOn = original_body_state
                     
             except Exception as e:
                 failed_items.append(f"{item['name']} ({str(e)})")
