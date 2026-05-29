@@ -15,7 +15,25 @@ This document provides operational directives for AI coding assistants (GitHub C
 2. Optionally exports matching items to STL files after versioning
 3. Matching is based on a filename-derived prefix and naming conventions
 
-**Current Version:** 1.2.0 (manifest version: 1.2.0)
+**Current Version:** 2.1.0 (manifest version: 2.1.0)
+
+### Version Bumping for This Project
+
+**CRITICAL: Version MUST be updated in TWO files whenever code changes:**
+
+1. `dpxVersioning.py` - Update the `VERSION` constant (line ~48):
+   ```python
+   VERSION = "2.0.17"
+   ```
+
+2. `dpxVersioning.manifest` - Update the `version` field (line ~11):
+   ```json
+   "version":"2.0.17"
+   ```
+
+**Both files must have matching version numbers.** Fusion 360 reads the manifest version for display, but the Python code uses the VERSION constant for UI messages.
+
+**When to bump:** For ANY code change, bug fix, or feature addition. No exceptions.
 
 ### Key Technical Details
 

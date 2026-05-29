@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.0.16"
+VERSION = "2.1.0"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -849,7 +849,7 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # This keeps file version in sync with body version tags
             if total_renamed > 0:
                 # Default commit message (used as fallback)
-                default_commit_message = f"[ v{nextVerNum} ] - {total_renamed} processed using: {file_prefix}"
+                default_commit_message = f"[ v{nextVerNum} ] - |{total_renamed}| {file_prefix} "
                 
                 # Try to get user comment
                 commit_message = default_commit_message
@@ -861,15 +861,19 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
                         ''
                     )
                     
-                    if result[0]:  # User clicked OK
-                        user_comment = result[1].strip() if result[1] else ""
+                    # Fusion 360 API quirk: result[0] = text string, result[1] = boolean BUT INVERTED
+                    # result[1] = False means OK clicked, True means Cancel clicked!
+                    if not result[1]:  # User clicked OK (result[1] is False)
+                        user_comment = result[0].strip() if result[0] else ""
+                        
                         if user_comment:
                             # Sanitize comment - remove any problematic characters
                             # Keep only alphanumeric, spaces, basic punctuation
                             sanitized_comment = re.sub(r'[^\w\s\-\.\,\!\?\(\)]', '', user_comment)
+                            
                             if sanitized_comment:
-                                commit_message = f"[ v{nextVerNum} ] - {sanitized_comment} - ({total_renamed} processed using: {file_prefix})"
-                except:
+                                commit_message = f"[ v{nextVerNum} ] - {sanitized_comment}  - |{total_renamed}| {file_prefix} "
+                except Exception as e:
                     # If input dialog fails, just use default message
                     pass
                 

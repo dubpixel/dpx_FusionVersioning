@@ -147,9 +147,10 @@ _Clone or download this repository. Maybe check releases first if you want a fro
   - DPX Versioning = retag + save
   - DPX Version + Export = retag + save + STL export
 4. Script reads document version N and applies `_v(N+1)` to matching names.
-5. You get a save comment prompt (optional), then the file saves to keep version sync.
-6. Export mode prompts for folder, then exports tagged items as STL with visibility handling.
-7. Prefix matching supports both `_` and `-` separators.
+5. You get a custom comment prompt (optional) - add notes to the version history or leave blank for auto-generated message.
+6. The file saves to keep version sync, with your custom comment appearing in Fusion's version history.
+7. Export mode prompts for folder, then exports tagged items as STL with visibility handling.
+8. Prefix matching supports both `_` and `-` separators.
 <!-- REFLECTION -->
 ## Reflection
 
@@ -169,6 +170,7 @@ _Clone or download this repository. Maybe check releases first if you want a fro
 - [x] extend to components
 - [x] add second button for version+export
 - [x] export tagged components/bodies to STL
+- [x] add custom comment prompt for version history
 - [ ] add guaranteed unique export filenames in all assemblies
 - [ ] add optional dry-run / no-save mode
 
