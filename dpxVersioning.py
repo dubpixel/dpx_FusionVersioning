@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.0.14"
+VERSION = "2.0.15"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -849,7 +849,7 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # This keeps file version in sync with body version tags
             if total_renamed > 0:
                 # Default commit message (used as fallback)
-                default_commit_message = f"[▓▓▓ DPX ▓▓▓] Auto-versioned to v{nextVerNum} ({total_renamed} {file_prefix} bodies/components)"
+                default_commit_message = f"[|--- v{nextVerNum} ---|] Auto-versioned to v{nextVerNum} ({total_renamed} {file_prefix} bodies/components)"
                 
                 # Try to get user comment
                 commit_message = default_commit_message
