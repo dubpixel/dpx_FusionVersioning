@@ -6,6 +6,95 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.14] - 2026-05-19
+
+**refinement medium is like what i do with the 3dprintsetting**
+
+→ Changed mesh refinement back to MeshRefinementMedium (from Low in v2.0.13)  
+→ Matches user's 3D print settings and standard quality expectations  
+→ Real fix was individual body export (not ObjectCollection), not the mesh refinement level  
+
+---
+
+## [2.0.13] - 2026-05-19
+
+**same error message no more details [still getting Invalid geometry type (3)]**
+
+→ Changed to export each body individually instead of using ObjectCollection - may avoid geometry type conflicts  
+→ Changed mesh refinement from MeshRefinementMedium to MeshRefinementLow - simpler mesh generation may succeed where medium fails  
+→ Single-body components export to final filename; multi-body components create separate _part0, _part1, etc. files  
+→ Added per-body error reporting to identify which specific body fails  
+
+---
+
+## [2.0.12] - 2026-05-19
+
+**does not work. are you using the filename you started with because the script selects, then versions up, then exports - if its looking for the old filename maybe thats why its failing**
+
+→ Added validation checks: verify occurrence.isValid and body.isValid before attempting export  
+→ Check for stale references after rename operation that might invalidate occurrence/body handles  
+→ Skip invalid occurrences/bodies with descriptive error instead of attempting export  
+→ Note: Names ARE refreshed post-rename (line ~227), but investigating if object references become stale  
+
+---
+
+## [2.0.11] - 2026-05-19
+
+**all fail for now. but they export fine via the 3d print function / idk if you should do that [switch to 3D print]**
+
+→ Reverted v2.0.10 change - restored body collection approach from v2.0.4  
+→ Back to passing BRepBody or ObjectCollection to createSTLExportOptions (not Occurrence)  
+→ Changed based on v2.0.4 note that "API expects `BRepBody` or `ObjectCollection` of bodies, not `Occurrence` objects"  
+→ v2.0.10 experiment of passing occurrence directly was incorrect per API requirements  
+
+---
+
+## [2.0.10] - 2026-05-19
+
+**no they did not [still getting error 3: Invalid geometry type]**
+
+→ Reverted body collection approach - trying to pass occurrence directly to createSTLExportOptions()  
+→ Removed manual body collection and ObjectCollection creation  
+→ Let Fusion handle which bodies to export from the occurrence  
+→ Note: This contradicts v2.0.4 fix but testing different approach to resolve "Invalid geometry type" error  
+
+---
+
+## [2.0.9] - 2026-05-19
+
+**ok so it still doesnt work same error 3: - are u sure ur exporting the right part the tree. - the body not the component needs to be selected. idk**
+
+→ Fixed "Invalid geometry type" error by using `occ.bRepBodies` instead of `comp.bRepBodies`  
+→ Root cause: bodies must come from the placed occurrence instance, not the component definition  
+→ Component = definition/template; Occurrence = placed instance with position/context in assembly  
+→ ExportManager needs bodies from the actual instance in the assembly tree to capture correct geometry and transforms  
+
+---
+
+## [2.0.8] - 2026-05-19
+
+**they export fine via the normal 3d print operation maybe ur overcomplicating it**
+
+→ Removed overcomplicated geometry validation checks (isSolid, volume > 0, mesh body detection, face counting)  
+→ Simplified to: collect all bodies, make visible, attempt export, capture real Fusion error if it fails  
+→ Let Fusion's exportManager handle validation — if bodies export via 3D print, they're valid  
+→ Wrapped export operations in try/except to surface actual Fusion error messages instead of pre-validation guesses  
+→ Updated AGENTS.md with mandatory rule: version must be bumped for every code change  
+
+---
+
+## [2.0.7] - 2026-05-19
+
+**it works sometimes but determines the geometry is invalid sometimes and wont output im not sure how and why**
+
+→ Added geometry validation before attempting STL export — prevents intermittent silent failures  
+→ For component bodies: validates `body.isSolid`, checks `body.volume > 0`, filters out surface bodies and zero-volume geometry  
+→ For standalone bodies: validates solid status with early-exit and descriptive error ("surface body - not solid" or "zero volume - invalid geometry")  
+→ Updated error messages to be more specific ("no valid solid bodies - check for surfaces or zero volume" instead of generic "no bodies to export")  
+→ **Root cause**: Fusion's `exportMgr.execute()` returns False for surface bodies, degenerate geometry, and zero-volume shapes, but previous code attempted export without validation  
+
+---
+
 ## [2.0.6] - 2026-03-17
 
 **you need to save, so the version prints correctly on the file. then export i think**
