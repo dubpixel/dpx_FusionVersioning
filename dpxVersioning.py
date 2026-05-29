@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.0.12"
+VERSION = "2.0.14"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -317,29 +317,41 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
                         failed_items.append(f"{item['name']} (no bodies found in component)")
                     else:
                         try:
-                            # Create STL export options for the body/bodies
-                            # Per v2.0.4: API expects BRepBody or ObjectCollection, NOT Occurrence
-                            if len(bodies_to_export) == 1:
-                                exportEntity = bodies_to_export[0]
-                            else:
-                                # Create a collection for multiple bodies
-                                exportEntity = adsk.core.ObjectCollection.create()
-                                for body in bodies_to_export:
-                                    exportEntity.add(body)
+                            # Try exporting bodies individually then combining,
+                            # instead of creating ObjectCollection (may avoid geometry type issues)
+                            temp_files = []
+                            export_failed = False
                             
-                            stlOptions = exportMgr.createSTLExportOptions(exportEntity)
-                            stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                            for idx, body in enumerate(bodies_to_export):
+                                try:
+                                    # Export each body to its own temp STL
+                                    temp_filename = os.path.join(exportPath, f"{item['name']}_part{idx}.stl")
+                                    stlOptions = exportMgr.createSTLExportOptions(body)
+                                    stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                                    stlOptions.filename = temp_filename
+                                    
+                                    success = exportMgr.execute(stlOptions)
+                                    if success:
+                                        temp_files.append(temp_filename)
+                                    else:
+                                        export_failed = True
+                                        break
+                                except Exception as e:
+                                    failed_items.append(f"{item['name']} body {idx} ({str(e)})")
+                                    export_failed = True
+                                    break
                             
-                            # Set the filename using the item name
-                            filename = os.path.join(exportPath, f"{item['name']}.stl")
-                            stlOptions.filename = filename
-                            
-                            # Execute the export
-                            success = exportMgr.execute(stlOptions)
-                            if success:
-                                exported_count += 1
-                            else:
-                                failed_items.append(f"{item['name']} (Fusion rejected export)")
+                            if not export_failed and len(temp_files) > 0:
+                                if len(temp_files) == 1:
+                                    # Single body - rename temp file to final name
+                                    final_filename = os.path.join(exportPath, f"{item['name']}.stl")
+                                    os.rename(temp_files[0], final_filename)
+                                    exported_count += 1
+                                else:
+                                    # Multiple bodies - keep separate files for now (TODO: merge STLs)
+                                    exported_count += 1
+                            elif not export_failed:
+                                failed_items.append(f"{item['name']} (no bodies exported)")
                         except Exception as export_err:
                             failed_items.append(f"{item['name']} ({str(export_err)})")
                     

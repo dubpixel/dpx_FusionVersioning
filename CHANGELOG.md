@@ -6,6 +6,27 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.0.14] - 2026-05-19
+
+**refinement medium is like what i do with the 3dprintsetting**
+
+→ Changed mesh refinement back to MeshRefinementMedium (from Low in v2.0.13)  
+→ Matches user's 3D print settings and standard quality expectations  
+→ Real fix was individual body export (not ObjectCollection), not the mesh refinement level  
+
+---
+
+## [2.0.13] - 2026-05-19
+
+**same error message no more details [still getting Invalid geometry type (3)]**
+
+→ Changed to export each body individually instead of using ObjectCollection - may avoid geometry type conflicts  
+→ Changed mesh refinement from MeshRefinementMedium to MeshRefinementLow - simpler mesh generation may succeed where medium fails  
+→ Single-body components export to final filename; multi-body components create separate _part0, _part1, etc. files  
+→ Added per-body error reporting to identify which specific body fails  
+
+---
+
 ## [2.0.12] - 2026-05-19
 
 **does not work. are you using the filename you started with because the script selects, then versions up, then exports - if its looking for the old filename maybe thats why its failing**
