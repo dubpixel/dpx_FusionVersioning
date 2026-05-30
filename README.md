@@ -6,12 +6,6 @@
 
 
 <!-- /// d   u   b   p   i   x   e   l  ---  f   o   r   k   ////--v0.5.1 -->
-<!--this has additionally been modifed by @dubpixel for hardware use -->
-<!--search dpxFusionVersioning.. search & replace is COMMAND OPTION F -->
-
-<!--this is the version for sofrware only-->
-<!--todo add small product image thats not in a details tag -->
-<!--igure out how to get the details tag to properly render in jekyll for gihub pages.-->
 
 
 
@@ -39,9 +33,9 @@
     <img src="images/logo.png" alt="Logo" height="120">
   </a>
 <h1 align="center">dpx_FusionVersioning</h1>
-<h3 align="center"><i>keep body/component version tagging consistent in Fusion 360</i></h3>
+<h3 align="center"><i>Automated version synchronization for Fusion 360 components and bodies</i></h3>
   <p align="center">
-    scrapes 3 letter prefix xxx_ from filename, matches components/bodies with that prefix, applies file-version+1 tags, and can export tagged STL files.
+    Eliminates version drift by automatically keeping component/body names in sync with file versions. Extracts filename prefix, applies version tags to matching items, preserves version history in save comments, and exports tagged STL files with selective control.
     <br />
      »  
      <a href="https://github.com/dubpixel/dpx_FusionVersioning"><strong>Project Here!</strong></a>
@@ -70,7 +64,8 @@
         <li><a href="#installation">Installation</a></li>
       </ul>
     </li>
-    <li><a href="#usage">Usage</a></li>    
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#how-version-tracking-works">How Version Tracking Works</a></li>
     <li><a href="#reflection">Reflection</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -82,12 +77,27 @@
 <!-- ABOUT THE PROJECT -->
 <details>
 <summary><h3>About The Project</h3></summary>
-a dubpixel internal add-in for Fusion 360 to manage version tagging across components and bodies.
-the add-in scrapes the 3 letter prefix xxx_ from the filename and matches names that begin with that prefix (supports both underscore and dash separators). it then applies version+1 tagging based on the current file version number and autosaves to keep versions in sync.
 
-current workflow includes two commands in the Modify panel:
-1. DPX Versioning (tag + save)
-2. DPX Version + Export (tag + save + export tagged STL files)
+**The Problem:** When iterating on Fusion 360 designs, file versions advance but component/body names fall out of sync, making it hard to track which geometry corresponds to which version.
+
+**The Solution:** This add-in automatically keeps everything synchronized. It extracts a 3-letter prefix from your filename (e.g., `dpx_widget.f3d` → `dpx_`), finds all components and bodies starting with that prefix, and renames them with the current file version + 1. It supports both underscore and dash separators (`dpx_lever` and `dpx-bracket` both match).
+
+**Two-Button Workflow:**
+
+The add-in adds two buttons to the Modify panel:
+
+1. **DPX Versioning** — Retag matching components/bodies and save with version history comment
+2. **DPX Version + Export** — Same as above, PLUS export selected items as STL files
+
+**Version Preservation:**
+
+Version numbers are preserved in three places:
+- **Component/body names** — Visible `_vN` suffix in the design tree (e.g., `dpx_lever_v4`)
+- **Save comments** — Each save includes a version-tagged comment in Fusion's version history (e.g., `[ v4 ] - Fixed mounting bracket - |3| dpx_`)
+- **File metadata** — Fusion's internal version tracking
+
+**Important Note:** Version comment tagging only works going forward from when you start using this add-in. It does not retroactively add version tags to existing file history. (Though if someone figures out how to do that retroactively, that would be awesome for a future update!)
+
 </br>
 
 *author: // www.dubpixel.tv  - i@dubpixel.tv* 
@@ -138,41 +148,140 @@ _Clone or download this repository. Maybe check releases first if you want a fro
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-   _in fusion360_
-1. Name your Fusion file with a 3 letter prefix followed by underscore.
-  ex: `ZYX_filename`
-2. Name components/bodies with the same prefix.
-  ex: `ZYX_bracket`, `ZYX-body`, `ZYX_mount_v03`
-3. Click one of the buttons in Modify:
-  - DPX Versioning = retag + save
-  - DPX Version + Export = retag + save + STL export
-4. Script reads document version N and applies `_v(N+1)` to matching names.
-5. You get a custom comment prompt (optional) - add notes to the version history or leave blank for auto-generated message.
-6. The file saves to keep version sync, with your custom comment appearing in Fusion's version history.
-7. Export mode prompts for folder, then exports tagged items as STL with visibility handling.
-8. Prefix matching supports both `_` and `-` separators.
+### Basic Workflow
+
+1. **Set up your naming convention**
+   - Name your Fusion file with a 3-letter prefix + underscore: `dpx_widget.f3d`
+   - Name components/bodies with the same prefix: `dpx_bracket`, `dpx-lever`, `dpx_mount_v03`
+   - Both underscore and dash separators work: `dpx_` matches both `dpx_bracket` and `dpx-bracket`
+
+2. **Choose your workflow button** in the Modify panel:
+   - **DPX Versioning** — Just retag and save (no export)
+   - **DPX Version + Export** — Retag, save, AND export selected items as STL files
+
+3. **For Version + Export:** A checkbox panel appears showing all matching components/bodies
+   - Check the items you want to export as STL files
+   - All items get version-tagged regardless; checkboxes only control STL export
+   - Click OK to proceed
+
+4. **Version tagging happens automatically**
+   - Script reads current file version (e.g., v3) and applies version v4 to all matching names
+   - Example: `dpx_lever_v2` becomes `dpx_lever_v4`, `dpx_bracket` becomes `dpx_bracket_v4`
+
+5. **Add an optional comment** (or leave blank)
+   - You'll see a prompt: "Add an optional comment for this version (or leave blank)"
+   - Your comment gets tagged with the version number in Fusion's save history
+   - Example save comment: `[ v4 ] - Fixed mounting holes - |3| dpx_`
+
+6. **File saves automatically** to keep the version number in sync
+   - Your custom comment appears in Fusion's version history
+   - File advances from v3 to v4
+
+7. **If exporting:** Choose destination folder
+   - Selected items export as STL with mesh refinement set to Medium
+   - Visibility is handled automatically (tagged children get separate exports)
+   - Exported files use the new version-tagged names: `dpx_lever_v4.stl`
+
+### Example Scenario
+
+**File:** `abc_housing.f3d` (currently version 5)
+
+**Components/Bodies:**
+- `abc_top_shell` 
+- `abc_bottom_shell_v2`
+- `abc-hinge` 
+- `std_screw` (doesn't match prefix — ignored)
+
+**After running DPX Versioning:**
+- `abc_top_shell_v6`
+- `abc_bottom_shell_v6` 
+- `abc-hinge_v6`
+- `std_screw` (unchanged)
+
+**File version:** Now v6 with your custom comment in the history
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- VERSION TRACKING -->
+## How Version Tracking Works
+
+This add-in preserves version information in multiple places to help you track design evolution:
+
+### Where Versions Are Stored
+
+1. **Component and Body Names** (most visible)
+   - Appears as `_vN` suffix in the design tree: `dpx_lever_v4`, `dpx_bracket_v6`
+   - Always reflects file version + 1 after running the add-in
+   - Helps identify which geometry belongs to which iteration
+
+2. **Version History Comments** (most useful for tracking changes)
+   - Each save includes a tagged comment in Fusion's built-in version history
+   - Format: `[ v4 ] - Your custom note - |3| dpx_`
+   - The `|3|` shows how many items were renamed
+   - Access via File → Version History to see your annotated timeline
+
+3. **File Metadata** (automatic)
+   - Fusion's internal version counter advances with each save
+   - This is what the add-in reads to calculate the next version number
+
+### Version Comment Tagging: Not Retroactive
+
+**Important:** Version comment tagging only works going forward. When you start using this add-in, it will tag all *future* saves with version information in the comments, but it cannot retroactively add version tags to saves that happened before you installed it.
+
+This means:
+- ✅ **New saves after installing:** Get version-tagged comments (`[ v8 ] - your note`)
+- ❌ **Old saves before installing:** Keep their original comments (no version tags added)
+
+*Future enhancement idea: Retroactively parse and tag historical saves. If you know how to do this with the Fusion API, contributions are welcome!*
+
+### Clean UI Design
+
+Earlier versions of this add-in showed verbose debug output listing every renamed item. That's been streamlined:
+- You now see a clean summary: "Components: 2 Renamed, 1 Skipped" 
+- Detailed debug info is still collected internally but hidden by default
+- This keeps the user experience minimal and focused
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 <!-- REFLECTION -->
 ## Reflection
 
-* what did we learn? 
-  - _python for this sort of thing is excellent_
-* what do we like/hate?
-  - _that personal add-ins dont transfer with my account. wtf autodesk_
-* what would/could we do differently?
-  - _component support is in now; next is better export naming in large assemblies._
-  - _maybe have a suppress save mode / dry-run mode._
+### What Works Well
+- **Python + Fusion API** is excellent for this type of automation
+- **Version sync workflow** eliminates manual tracking and human error
+- **Checkbox export selection** gives granular control over what gets exported
+- **Custom version comments** create a useful annotated timeline in version history
+- **Prefix matching** is flexible (supports `_` and `-` separators) but strict enough to avoid false matches
+
+### Known Limitations
+- **Personal add-ins don't transfer with Autodesk accounts** — you need to reinstall when switching machines
+- **Duplicate STL filenames possible** in complex assemblies with identically-named bodies in different components
+- **Version comment tagging is not retroactive** — only works for saves after installation
+- **Requires save operation** — file must be saved for version numbers to advance (by design, to keep sync)
+
+### What Could Improve
+- **Guaranteed unique export filenames** in all assemblies (append occurrence path or counter)
+- **Optional dry-run mode** to preview changes without saving
+- **Retroactive version tagging** for existing file history (requires deeper Fusion API investigation)
 <!-- ROADMAP -->
 ## Roadmap
 
-- [x] basic re-tagging of body based on version+1
-- [x] screen only objects with 3 letter prefix used in filename
-- [x] autosave after tagging
-- [x] extend to components
-- [x] add second button for version+export
-- [x] export tagged components/bodies to STL
-- [x] add custom comment prompt for version history
-- [ ] add guaranteed unique export filenames in all assemblies
-- [ ] add optional dry-run / no-save mode
+### Completed Features
+- [x] Basic re-tagging of bodies based on file version + 1
+- [x] Prefix filtering — only tags components/bodies matching filename prefix
+- [x] Auto-save after tagging to maintain version sync
+- [x] Component support (not just bodies)
+- [x] Two-button workflow (tag-only vs tag+export)
+- [x] STL export with visibility handling for tagged items
+- [x] Custom comment prompt for version history annotations
+- [x] Checkbox selection panel for export control
+- [x] Support for both underscore and dash separators in names
+
+### Planned Enhancements
+- [ ] Guaranteed unique export filenames in all assemblies (append occurrence path)
+- [ ] Optional dry-run / preview mode (show what would change without saving)
+- [ ] Retroactive version tagging for existing file history (research needed)
+- [ ] Configurable prefix length (currently fixed at 3 characters)
 
 See the [open issues](https://github.com/dubpixel/dpx_FusionVersioning/issues) for a full list of proposed features (and known issues).
 
