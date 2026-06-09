@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -73,6 +73,41 @@ def matches_prefix(name, file_prefix):
     
     prefix_with_dash = file_prefix.replace('_', '-')
     return base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)
+
+
+def update_version_parameter(design, version_number):
+    """
+    Create or update a numeric user parameter named 'version' with the current version number.
+    
+    This provides a workaround for Autodesk breaking the direct parametric text call to versioning.
+    Parametric text (sketch text) can now reference the 'version' user parameter instead.
+    
+    Args:
+        design: The active Fusion design
+        version_number: The version number to set (integer)
+    
+    Returns:
+        bool: True if parameter was created/updated successfully, False otherwise
+    """
+    try:
+        user_params = design.userParameters
+        
+        # Check if 'version' parameter already exists
+        version_param = user_params.itemByName('version')
+        
+        if version_param:
+            # Parameter exists - update its value
+            version_param.expression = str(version_number)
+        else:
+            # Parameter doesn't exist - create it
+            # Use addByValue for numeric parameter (not addByExpression which is for formulas)
+            value_input = adsk.core.ValueInput.createByReal(float(version_number))
+            user_params.add('version', value_input, '', 'Version number synchronized with file version')
+        
+        return True
+    except Exception as e:
+        # Non-fatal error - log but don't block versioning workflow
+        return False
 
 
 def _collect_export_items(design, file_prefix):
@@ -672,6 +707,10 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # Use version + 1 so that when we save after renaming, the versions match
             # This prevents version drift between file version and body tags
             nextVerNum = verNum + 1
+            
+            # Update user parameter 'version' for parametric text references
+            # (Autodesk broke direct version access for parametric text)
+            update_version_parameter(design, nextVerNum)
             
             # Extract filename prefix for body matching
             # Example: "dpx_widget.f3d" → "dpx_"

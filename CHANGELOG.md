@@ -6,6 +6,19 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.1.1] - 2026-06-09
+
+**parametric text call to versioning broke - need to write to user variable 'version' with current version**
+
+→ Added `update_version_parameter()` function that creates or updates a numeric user parameter named 'version'  
+→ Parameter value set to `nextVerNum` (current file version + 1) to match body/component version tags  
+→ Called automatically during versioning workflow, before any renaming starts  
+→ Provides workaround for Autodesk breaking direct parametric text access to file version  
+→ Parametric text (sketch text) can now reference the 'version' user parameter instead of broken direct version call  
+→ Non-fatal: if parameter update fails, versioning workflow continues normally  
+
+---
+
 ## [2.0.14] - 2026-05-19
 
 **refinement medium is like what i do with the 3dprintsetting**
