@@ -10,8 +10,8 @@ It does two main things:
 Matching is based on a filename-derived prefix and naming conventions.
 
 ## Current Version
-- Add-in version: 1.2.0
-- Manifest version: 1.2.0
+- Add-in version: 2.1.1
+- Manifest version: 2.1.1
 
 ## Core Behavior
 When the command runs:
@@ -78,6 +78,7 @@ The second button additionally runs STL export logic.
 - Show completion summary and failures.
 
 ## Known Constraints and Risks
+- **Autodesk Parametric Text Limitation**: Autodesk broke direct parametric text (sketch text) access to file version in an undocumented API change. Workaround: add-in creates/updates a numeric user parameter named 'version' that parametric text can reference instead. This parameter is automatically synchronized with `nextVerNum` during each versioning run.
 - Body names are not globally unique in all assemblies; duplicate item names can overwrite STL files.
 - Visibility restore is best-effort and may skip deleted/invalid entities.
 - Prefix logic is intentionally strict to 3-letter convention; non-conforming filenames may miss targets.
