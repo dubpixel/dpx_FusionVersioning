@@ -145,6 +145,38 @@ _Clone or download this repository. Maybe check releases first if you want a fro
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- TECHNICAL BACKGROUND -->
+## Technical Background
+
+### Fusion 360 Versioning Changes (March 2026)
+
+In March 2026, Autodesk migrated to the Collaborative Editing Hub model, changing how Fusion 360 handles file versions:
+
+- **Before**: Every save automatically incremented version numbers  
+- **After**: UI introduced "Save" (frequent changes) vs "Create version" (milestones) distinction
+- **Reality**: Version numbers still exist in the underlying Data Management API - the migration was UI-only
+
+### How This Add-in Works
+
+This add-in uses the Fusion 360 Python API's `doc.save()` method:
+
+- **Every call creates a version** in Fusion's version history
+- Accepts a commit message that appears in version history  
+- Increments the `doc.dataFile.versionNumber` counter
+- **Cannot differentiate** between "lightweight save" and "milestone version" (requires cloud API integration)
+
+The Python API provides `doc.save(message)` but no separate methods for creating milestones/versions. To implement true save/version distinction would require integrating with Autodesk's Manufacturing Data Model cloud API (OAuth, HTTP requests, async handling) - significantly more complex.
+
+### Version Tagging Format
+
+- **Current format**: `dpx_item_v4` (version 4)
+- **Future consideration**: `dpx_item_v4d3` (version 4, development save 3)
+- Prefix matching supports both `_` and `-` separators
+
+**For developer deep-dive on API research**, see [.github/AGENTS.md](.github/AGENTS.md#01-fusion-360-versioning-api-research-may-june-2026).
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 <!-- USAGE EXAMPLES -->
 ## Usage
 

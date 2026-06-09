@@ -93,6 +93,97 @@ This document provides operational directives for AI coding assistants (GitHub C
 
 ---
 
+## 0.1. Fusion 360 Versioning API Research (May-June 2026)
+
+**Research conducted:** May 28 - June 9, 2026
+
+### Background
+
+In March 2026, Autodesk migrated Fusion 360 to the Collaborative Editing Hub model, introducing a new paradigm for file versions:
+
+- **UI Changes**: Version numbers hidden from UI, replaced with "Save" (frequent changes) vs "Create version" (milestones) distinction
+- **Data Reality**: Version numbers **still exist** in the underlying Data Management API
+- **Key Finding**: The `versionNumber` field remains intact (confirmed against files with 100+ pre-migration saves)
+- **"Create version" feature**: Rebranded "Milestone" tag - `historyChangeId` tokens still base64-decode to strings ending in "milestone"
+
+**Migration Scope**: UI-level only. The underlying data model did not change.
+
+### Manufacturing Data Model API v3
+
+Autodesk provides a cloud-based GraphQL API for advanced version management:
+
+**Endpoint**: `https://developer.api.autodesk.com/mfg/v3/graphql/public`
+
+**createVersion Mutation**:
+```graphql
+mutation CreateVersion($input: CreateVersionInput){
+  createVersion(input: $input) {
+    version {
+      id
+      status
+    }
+  }
+}
+```
+
+**Input Parameters**:
+- `targetId`: Base64-encoded model/component/item ID
+- `description`: Version message (appears in version history)
+
+**Returns**: Asynchronous operation with initial status `"IN_PROGRESS"`
+
+### Technical Constraints
+
+The Manufacturing Data Model API is a **cloud REST/GraphQL API**, NOT part of the Fusion 360 Python API:
+
+**Implementation Requirements**:
+- HTTP POST requests from Python add-in to cloud endpoint
+- OAuth Bearer token (3-legged authentication flow)
+- Extract model `targetId` from active Fusion document
+- Handle async responses (poll for completion status)
+- Error handling for network failures, auth expiry
+
+**Fusion Python API Limitation**:
+- `doc.save()` **always creates a version** - there is no separate "lightweight save" method
+- Cannot differentiate "save" vs "version" operations within Python API
+- Cloud API integration required for true save/version distinction
+
+### Why This Matters
+
+**For dpx_FusionVersioning**: The add-in currently uses `doc.save()` with custom commit messages. This creates a version entry in Fusion's version history every time. To implement true "save" vs "version" modes would require:
+
+1. Full OAuth authentication flow in the add-in
+2. HTTP client library integration
+3. Model ID extraction from Fusion API
+4. Async operation handling
+5. Significantly increased complexity (~5-10x code size)
+
+**Alternative Approach**: Use local metadata file to track "save counts" independent of Fusion's version system. Simpler implementation, but doesn't align with Fusion's native version/milestone distinction.
+
+### Documentation & References
+
+**Official Autodesk Documentation**:
+- Manufacturing Data Model API: https://aps.autodesk.com/en/docs/mfgdataapi/v3/
+- createVersion mutation: https://aps.autodesk.com/en/docs/mfgdataapi/v3/reference/mutations/createversion
+- Fusion Python API: https://help.autodesk.com/view/fusion360/ENU/?guid=GUID-7B5A90C8-E94C-48DA-B16B-430729B734DC
+
+**Related APIs**:
+- `createVersionForComponent`: Version a specific component
+- `createVersionForItem`: Version an item (file-level)
+- Time-based history queries for version tracking
+
+### Future Considerations
+
+**Potential Enhancements** (not currently implemented):
+- 4-mode button system: Save, Save+Export, Version, Version+Export
+- Naming format: `dpx_item_v4d3` (version 4, save 3)
+- Metadata tracking file alongside `.f3d` files
+- Cloud API integration for true version/save distinction
+
+**Implementation Decision**: On hold pending user requirements and complexity trade-offs.
+
+---
+
 ## 1. Automatic Workflow (MANDATORY)
 
 These actions are **required** and must happen automatically. **NEVER ask permission** for these workflow steps.
