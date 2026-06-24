@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.1.1"
+VERSION = "2.1.2"
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -75,7 +75,7 @@ def matches_prefix(name, file_prefix):
     return base_name_lower.startswith(file_prefix) or base_name_lower.startswith(prefix_with_dash)
 
 
-def update_version_parameter(design, version_number):
+def update_version_parameter(design, version_number, debug_info=None):
     """
     Create or update a numeric user parameter named 'version' with the current version number.
     
@@ -85,6 +85,7 @@ def update_version_parameter(design, version_number):
     Args:
         design: The active Fusion design
         version_number: The version number to set (integer)
+        debug_info: Optional list to append debug messages to
     
     Returns:
         bool: True if parameter was created/updated successfully, False otherwise
@@ -97,16 +98,25 @@ def update_version_parameter(design, version_number):
         
         if version_param:
             # Parameter exists - update its value
+            # User parameters use expressions (strings), not numeric values
             version_param.expression = str(version_number)
+            if debug_info is not None:
+                debug_info.append(f"[PARAM] Updated 'version' parameter to: {version_number}")
         else:
-            # Parameter doesn't exist - create it
-            # Use addByValue for numeric parameter (not addByExpression which is for formulas)
-            value_input = adsk.core.ValueInput.createByReal(float(version_number))
-            user_params.add('version', value_input, '', 'Version number synchronized with file version')
+            # Parameter doesn't exist - create it as an expression
+            # Fusion user parameters are created with addByExpression, not addByValue
+            # Pass the number as a string expression (e.g., "4")
+            user_params.add('version', adsk.core.ValueInput.createByString(str(version_number)), '', 'Version number synchronized with file version')
+            if debug_info is not None:
+                debug_info.append(f"[PARAM] Created 'version' parameter with value: {version_number}")
         
         return True
     except Exception as e:
-        # Non-fatal error - log but don't block versioning workflow
+        # Log error details for debugging
+        error_msg = f"[PARAM] ERROR: Failed to update 'version' parameter: {str(e)}"
+        if debug_info is not None:
+            debug_info.append(error_msg)
+        # Non-fatal error - don't block versioning workflow
         return False
 
 
@@ -708,9 +718,15 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # This prevents version drift between file version and body tags
             nextVerNum = verNum + 1
             
+            # Initialize debug info collection early so parameter update can log to it
+            debug_info = []
+            debug_info.append(f"File version (current): v{verNum}")
+            debug_info.append(f"Next version (tagging): v{nextVerNum}")
+            debug_info.append("")
+            
             # Update user parameter 'version' for parametric text references
             # (Autodesk broke direct version access for parametric text)
-            update_version_parameter(design, nextVerNum)
+            update_version_parameter(design, nextVerNum, debug_info)
             
             # Extract filename prefix for body matching
             # Example: "dpx_widget.f3d" → "dpx_"
@@ -730,12 +746,6 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             skipped_count = 0
             component_renamed_count = 0
             component_skipped_count = 0
-            
-            # Debug info collection
-            debug_info = []
-            debug_info.append(f"File prefix: '{file_prefix}'")
-            debug_info.append(f"Next version: v{nextVerNum}")
-            debug_info.append("")
             
             # Get reference to root component (cannot be renamed in Fusion 360)
             rootComp = design.rootComponent
@@ -868,12 +878,11 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # Provide user feedback about what was processed
             total_renamed = renamed_count + component_renamed_count
             
-            # Debug info is collected but not shown by default
-            # Uncomment the lines below to see detailed rename operations:
-            # debug_text = "\n".join(debug_info[:40])  # Limit to 40 lines
-            # if len(debug_info) > 40:
-            #     debug_text += f"\n... and {len(debug_info) - 40} more lines"
-            # ui.messageBox(f'DEBUG INFO:\n\n{debug_text}', 'DPX Debug')
+            # Debug info - TEMPORARILY ENABLED to diagnose parameter update issue
+            debug_text = "\n".join(debug_info[:40])  # Limit to 40 lines
+            if len(debug_info) > 40:
+                debug_text += f"\n... and {len(debug_info) - 40} more lines"
+            ui.messageBox(f'DEBUG INFO:\n\n{debug_text}', 'DPX Debug')
             
             ui.messageBox(
                 f'DPX Versioning v{VERSION}\n\n'

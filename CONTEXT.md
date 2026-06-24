@@ -10,8 +10,8 @@ It does two main things:
 Matching is based on a filename-derived prefix and naming conventions.
 
 ## Current Version
-- Add-in version: 2.1.1
-- Manifest version: 2.1.1
+- Add-in version: 2.1.2
+- Manifest version: 2.1.2
 
 ## Core Behavior
 When the command runs:

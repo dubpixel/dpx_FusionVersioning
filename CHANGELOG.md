@@ -6,6 +6,19 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.1.2] - 2026-06-24
+
+**user variable 'version' stopped working - not updating anymore**
+
+→ Fixed parameter creation: changed from `createByReal()` to `createByString()` — Fusion user parameters use string expressions, not float values  
+→ Added debug logging to `update_version_parameter()` — now logs success/failure to debug_info array  
+→ Moved debug_info initialization before parameter update — allows parameter update to log diagnostic messages  
+→ Temporarily enabled debug output dialog — shows parameter update status to diagnose issues  
+→ Added error details to exception handler — failures now show specific error message instead of silent return False  
+→ Root cause: Fusion 360 API expects user parameters to be created with string expressions ("4"), not numeric ValueInput objects  
+
+---
+
 ## [2.1.1] - 2026-06-09
 
 **parametric text call to versioning broke - need to write to user variable 'version' with current version**
