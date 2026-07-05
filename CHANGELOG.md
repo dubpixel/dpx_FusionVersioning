@@ -6,6 +6,17 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.1.3] - 2026-07-05
+
+**debug vomit still there - make it a variable/option**
+
+→ Added `SHOW_DEBUG_POPUP` config flag in code (default `False`) to control debug dialog behavior  
+→ Removed always-on debug popup during normal successful runs  
+→ Debug popup now appears automatically only if user parameter `version` sync fails  
+→ Keeps parameter failure diagnostics available without spamming every run  
+
+---
+
 ## [2.1.2] - 2026-06-24
 
 **user variable 'version' stopped working - not updating anymore**

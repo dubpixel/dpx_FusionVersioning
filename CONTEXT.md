@@ -10,8 +10,8 @@ It does two main things:
 Matching is based on a filename-derived prefix and naming conventions.
 
 ## Current Version
-- Add-in version: 2.1.2
-- Manifest version: 2.1.2
+- Add-in version: 2.1.3
+- Manifest version: 2.1.3
 
 ## Core Behavior
 When the command runs:
@@ -22,6 +22,10 @@ When the command runs:
 5. Renames matching bodies in all components and root component.
 6. Saves document with default or user-supplied comment.
 7. If using export command, exports selected tagged items as STL.
+
+Debug behavior:
+- `SHOW_DEBUG_POPUP = False` by default (no debug popup spam on successful runs).
+- Parameter sync debug details are still shown automatically when `version` parameter update fails.
 
 ## Prefix and Version Matching Rules
 - Prefix source: first 3 letters of filename + `_`.

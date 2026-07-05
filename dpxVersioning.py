@@ -45,7 +45,12 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.1.2"
+VERSION = "2.1.3"
+
+# Debug popup behavior for DPX debug info:
+# - False: no debug popup during normal operation (recommended)
+# - True: always show debug popup
+SHOW_DEBUG_POPUP = False
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -726,7 +731,7 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             
             # Update user parameter 'version' for parametric text references
             # (Autodesk broke direct version access for parametric text)
-            update_version_parameter(design, nextVerNum, debug_info)
+            param_update_ok = update_version_parameter(design, nextVerNum, debug_info)
             
             # Extract filename prefix for body matching
             # Example: "dpx_widget.f3d" → "dpx_"
@@ -878,11 +883,13 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             # Provide user feedback about what was processed
             total_renamed = renamed_count + component_renamed_count
             
-            # Debug info - TEMPORARILY ENABLED to diagnose parameter update issue
-            debug_text = "\n".join(debug_info[:40])  # Limit to 40 lines
-            if len(debug_info) > 40:
-                debug_text += f"\n... and {len(debug_info) - 40} more lines"
-            ui.messageBox(f'DEBUG INFO:\n\n{debug_text}', 'DPX Debug')
+            # Show debug popup only when explicitly enabled, or if parameter sync fails.
+            if SHOW_DEBUG_POPUP or not param_update_ok:
+                debug_text = "\n".join(debug_info[:40])  # Limit to 40 lines
+                if len(debug_info) > 40:
+                    debug_text += f"\n... and {len(debug_info) - 40} more lines"
+                title = 'DPX Debug' if SHOW_DEBUG_POPUP else 'DPX Parameter Sync Warning'
+                ui.messageBox(f'DEBUG INFO:\n\n{debug_text}', title)
             
             ui.messageBox(
                 f'DPX Versioning v{VERSION}\n\n'
