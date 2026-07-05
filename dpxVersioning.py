@@ -45,7 +45,7 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.1.3"
+VERSION = "2.1.4"
 
 # Debug popup behavior for DPX debug info:
 # - False: no debug popup during normal operation (recommended)
@@ -664,6 +664,17 @@ class DpxVersioningCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                         True,   # default: checked
                     )
 
+                # Debug sub-pane — collapsed by default so it stays out of the way.
+                grp_debug = inputs.addGroupCommandInput('grp_debug', 'Debug')
+                grp_debug.isExpanded = False
+                grp_debug.children.addBoolValueInput(
+                    'dpx_debug_popup',
+                    'Show debug popup',
+                    True,   # is a checkbox
+                    '',     # no resource icon
+                    False,  # default: off  (matches SHOW_DEBUG_POPUP = False)
+                )
+
             except Exception:
                 # Panel build failure is non-fatal: execute will fall back to
                 # the legacy Yes/No preview path automatically.
@@ -884,11 +895,19 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             total_renamed = renamed_count + component_renamed_count
             
             # Show debug popup only when explicitly enabled, or if parameter sync fails.
-            if SHOW_DEBUG_POPUP or not param_update_ok:
+            # Prefer the runtime checkbox value (set in the export panel) when available;
+            # fall back to the module-level constant for the Version Only path.
+            _debug_cb = None
+            try:
+                _debug_cb = args.command.commandInputs.itemById('dpx_debug_popup')
+            except Exception:
+                pass
+            show_debug = _debug_cb.value if _debug_cb is not None else SHOW_DEBUG_POPUP
+            if show_debug or not param_update_ok:
                 debug_text = "\n".join(debug_info[:40])  # Limit to 40 lines
                 if len(debug_info) > 40:
                     debug_text += f"\n... and {len(debug_info) - 40} more lines"
-                title = 'DPX Debug' if SHOW_DEBUG_POPUP else 'DPX Parameter Sync Warning'
+                title = 'DPX Debug' if show_debug else 'DPX Parameter Sync Warning'
                 ui.messageBox(f'DEBUG INFO:\n\n{debug_text}', title)
             
             ui.messageBox(
