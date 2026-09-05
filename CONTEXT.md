@@ -10,8 +10,8 @@ It does two main things:
 Matching is based on a filename-derived prefix and naming conventions.
 
 ## Current Version
-- Add-in version: 2.1.3
-- Manifest version: 2.1.3
+- Add-in version: 2.4.3
+- Manifest version: 2.4.3
 
 ## Core Behavior
 When the command runs:
@@ -26,6 +26,7 @@ When the command runs:
 Debug behavior:
 - `SHOW_DEBUG_POPUP = False` by default (no debug popup spam on successful runs).
 - Parameter sync debug details are still shown automatically when `version` parameter update fails.
+- The Version + Export panel has a collapsed "Debug" group with a "Show debug popup" checkbox (default: unchecked). When present, the runtime checkbox value takes priority over `SHOW_DEBUG_POPUP`. The Version Only path has no panel, so it always falls back to the `SHOW_DEBUG_POPUP` constant.
 
 ## Prefix and Version Matching Rules
 - Prefix source: first 3 letters of filename + `_`.
@@ -71,14 +72,31 @@ The second button additionally runs STL export logic.
 - Export uses `design.exportManager` and STL export options.
 
 ## Export Logic Summary
-- Collect tagged components and tagged bodies.
-- Exclude tagged bodies whose parent component is tagged (to avoid duplicate exports under parent export).
+- The export checklist has two independent groups: tagged components, and
+  tagged bodies found anywhere in the design (any nesting depth, regardless
+  of whether a parent component is also tagged). A body may legitimately be
+  selected via its own row and also get swept into a component's bundle —
+  the two groups don't exclude each other.
+- Checking a **component** row walks its full occurrence subtree recursively
+  (through nested subcomponents, tagged or not — nesting is never a stopping
+  condition) and collects every body whose own name is tagged:
+  - Exactly one tagged body found → exports as `{component_name}.stl`.
+  - Multiple tagged bodies found → each exports individually under its own
+    already-versioned name (`{body_name}.stl`), no merging.
+  - No tagged bodies found, but exactly one body total in the subtree → that
+    sole body is exported anyway under the component's name, reported as a
+    warning (not a failure). Whether the body's actual name in the document
+    is also updated to match is controlled by the top-level "Rename untagged
+    body" panel option, shown above the Tagged Components group
+    (`RENAME_SOLE_UNTAGGED_BODY` constant as the legacy-path fallback,
+    default off). Zero tagged bodies
+    with multiple untagged bodies present is still a hard failure —
+    ambiguous which one was meant.
+- Checking a **body** row exports that one body directly as `{body_name}.stl`.
 - Ask user for destination folder.
-- For each export item:
-  - Temporarily force visibility needed for intended export composition.
-  - Hide tagged nested items so they can be exported separately.
-  - Export to `{item_name}.stl`.
-  - Restore visibility.
+- For each export item, temporarily force visibility needed (a body is only
+  actually visible if its full ancestor occurrence chain is too), export,
+  then restore original visibility.
 - Show completion summary and failures.
 
 ## Known Constraints and Risks
@@ -106,11 +124,11 @@ High-risk edits:
 - Root component logic and save flow sequencing.
 
 ## Suggested Near-Term Improvements
-1. Ensure unique STL filenames (append index or occurrence path).
+1. Ensure unique STL filenames (append index or occurrence path) — bodies with
+   identical names in different tagged components will still collide.
 2. Add optional dry-run mode (rename preview without save).
 3. Add opt-in body renaming toggle in command inputs.
 4. Improve installer scripts to replace existing add-in dir atomically.
-5. Add structured debug logging switch instead of commented debug blocks.
 
 ## Quick Verification Checklist
 1. Add-in loads and both commands appear in Modify panel.

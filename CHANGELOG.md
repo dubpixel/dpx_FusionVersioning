@@ -6,6 +6,83 @@ Format: User prompt as single line, followed by itemized solution with → bulle
 
 ---
 
+## [2.4.3] - 2026-09-05
+
+**move "Rename untagged body" to a top-level toggle, default off**
+
+→ Moved out of the "Tagged Components" group entirely — now a standalone panel option above it, near "Detected prefix"  
+→ Default flipped from on to off (`RENAME_SOLE_UNTAGGED_BODY = False`) — the sole-untagged-body edge case now exports under the component's name without touching the document body unless explicitly enabled  
+
+---
+
+## [2.4.2] - 2026-09-05
+
+**export panel polish: shorter label, moved checkbox**
+
+→ "Rename untagged body to match component (in document)" shortened to "Rename untagged body"  
+→ Moved out of its own "Options" group into the top of "Tagged Components" — it's a component-scoped setting, so it lives with the group it affects  
+
+---
+
+## [2.4.0] - 2026-09-05
+
+**settingize the sole-untagged-body in-document rename**
+
+→ Added an "Options" group to the export panel with "Rename untagged body to match component (in document)" (default: on)  
+→ When off, the sole-untagged-body edge case still exports under the component's name, but the body's actual name in the document is left untouched  
+→ New `RENAME_SOLE_UNTAGGED_BODY` module constant is the fallback default for the legacy (no-panel) export path  
+
+---
+
+## [2.3.2] - 2026-09-05
+
+**default Tagged Components checkboxes to unchecked**
+
+→ Bodies are the common case; components stay available but no longer preselected — Tagged Bodies group is unaffected, still default-checked  
+
+---
+
+## [2.3.1] - 2026-09-05
+
+**fix: tagged components silently dropped from export list**
+
+→ Component dedup in `_collect_export_items` used `id(comp)` — a Python memory address that Fusion API proxy objects can recycle mid-loop, causing an unrelated component to be wrongly treated as "already seen" and dropped  
+→ Switched to `comp.entityToken`, which Fusion guarantees stable per component  
+
+---
+
+## [2.3.0] - 2026-09-05
+
+**sole-untagged-body edge case + show detected prefix in export panel**
+
+→ Export panel now shows a "Detected prefix" line at the top so it's obvious what's being matched before scanning the Components/Bodies lists  
+→ Edge case: a tagged component whose subtree has zero tagged bodies but exactly one body total now gets that body auto-renamed to match the component and exported anyway, with a warning — previously reported as a hard failure ("no tagged bodies found")  
+→ Ambiguous case (zero tagged bodies, multiple untagged bodies) still fails as before — no way to guess which one was meant  
+→ Export summary now has a separate "Warnings" section alongside "Exported"/"Failed" so a successful-but-auto-corrected export isn't buried under failures  
+
+---
+
+## [2.2.0] - 2026-09-05
+
+**export panel picks up tagged bodies nested inside tagged components, and multi-body components no longer produce junk _part files**
+
+→ Split the export checklist into two independent groups: "Tagged Components" and "Tagged Bodies" — every tagged body now gets its own row regardless of whether its parent component is also tagged (previously excluded, which hid bodies you wanted to cherry-pick individually)  
+→ Component export now walks the full occurrence subtree recursively, collecting only tagged bodies at any nesting depth — previously only bodies directly owned by that one component were found, so tagged bodies living inside a nested subcomponent were silently skipped  
+→ Removed the `_partN.stl` / merge-STL fallback entirely: a tagged component with one tagged body exports as `{component_name}.stl`; with multiple tagged bodies, each exports individually under its own already-versioned name — no more leftover unmerged fragment files  
+→ Checking a component and one of its own bodies individually is allowed and simply exports that body twice under different names; the two groups are independent selections, not mutually exclusive  
+
+---
+
+## [2.1.4] - 2026-07-05
+
+**debug toggle checkbox in export panel sub-pane**
+
+→ Added collapsed "Debug" group with a "Show debug popup" checkbox to the Version + Export command panel (default: unchecked)  
+→ Execute handler now reads the runtime checkbox value when present; falls back to the `SHOW_DEBUG_POPUP` constant on the Version Only path  
+→ Lets users opt into debug output per-run from the UI instead of editing code  
+
+---
+
 ## [2.1.3] - 2026-07-05
 
 **debug vomit still there - make it a variable/option**
