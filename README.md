@@ -191,9 +191,11 @@ The Python API provides `doc.save(message)` but no separate methods for creating
    - **DPX Versioning** — Just retag and save (no export)
    - **DPX Version + Export** — Retag, save, AND export selected items as STL files
 
-3. **For Version + Export:** A checkbox panel appears showing all matching components/bodies
+3. **For Version + Export:** Two checkbox groups appear — **Tagged Components** and **Tagged Bodies**
    - Check the items you want to export as STL files
    - All items get version-tagged regardless; checkboxes only control STL export
+   - Checking a component exports every tagged body found anywhere in its subtree (nested subcomponents included); checking a body exports that one body directly — a body can be selected both ways at once if you want it in two files
+   - A collapsed **Debug** sub-pane at the bottom has a "Show debug popup" checkbox (off by default) — enable it to see diagnostic details for that run
    - Click OK to proceed
 
 4. **Version tagging happens automatically**

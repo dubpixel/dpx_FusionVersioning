@@ -15,7 +15,7 @@ This document provides operational directives for AI coding assistants (GitHub C
 2. Optionally exports matching items to STL files after versioning
 3. Matching is based on a filename-derived prefix and naming conventions
 
-**Current Version:** 2.1.0 (manifest version: 2.1.0)
+**Current Version:** 2.4.3 (manifest version: 2.4.3)
 
 ### Version Bumping for This Project
 
@@ -89,7 +89,7 @@ This document provides operational directives for AI coding assistants (GitHub C
 - Visibility restore is best-effort and may skip deleted/invalid entities
 - Prefix logic is strict: 3-letter convention required
 
-**For complete details, always reference [CONTEXT.md](../CONTEXT.md).**
+**For complete details, always reference [CONTEXT.md](CONTEXT.md).**
 
 ---
 

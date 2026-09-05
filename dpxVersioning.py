@@ -45,12 +45,20 @@ import re
 import os
 
 # Add-in version
-VERSION = "2.1.4"
+VERSION = "2.4.3"
 
 # Debug popup behavior for DPX debug info:
 # - False: no debug popup during normal operation (recommended)
 # - True: always show debug popup
 SHOW_DEBUG_POPUP = False
+
+# Sole-untagged-body edge case (see export_bodies): when a tagged component's
+# subtree has exactly one body and it's untagged, should that body's actual
+# name in the document be updated to match the component (not just the
+# exported STL filename)?
+# - True: rename the body in the document too
+# - False: export under the component's name, leave the document body as-is (default)
+RENAME_SOLE_UNTAGGED_BODY = False
 
 # Global list to keep all event handlers in scope.
 # This prevents the handlers from being garbage collected.
@@ -127,130 +135,184 @@ def update_version_parameter(design, version_number, debug_info=None):
 
 def _collect_export_items(design, file_prefix):
     """
-    Scan the design and return a flat list of export candidates matching file_prefix.
+    Scan the design and return tagged export candidates matching file_prefix,
+    split into two independent groups.
 
-    Each entry is a dict:
-        {'type': 'component', 'occurrence': occ, 'name': comp.name}
-      or
-        {'type': 'body', 'body': body, 'name': body.name}
+    Returns:
+        dict: {
+            'components': [{'type': 'component', 'occurrence': occ, 'name': comp.name}, ...],
+            'bodies':     [{'type': 'body', 'body': body, 'name': body.name}, ...],
+        }
 
     Rules:
-    - Components: one entry per unique component (first occurrence only, de-duplicated).
-      A component placed multiple times would otherwise produce N identical STL filenames
-      that silently overwrite each other.
-    - Bodies: only top-level tagged bodies whose parent component is NOT itself tagged
-      (those are exported as part of the parent component's STL).
-    - Root component itself is never included (Fusion does not allow renaming it, and
-      exporting the entire root is rarely the intent).
+    - Components: one entry per unique tagged component (first occurrence only,
+      de-duplicated). A component placed multiple times would otherwise produce
+      N identical STL filenames that silently overwrite each other.
+    - Bodies: every tagged body anywhere in the design gets its own entry,
+      regardless of whether its parent component is also tagged. The two
+      groups are independent selections — checking a component later expands
+      to whatever tagged bodies live in its subtree at export time, and a
+      body may legitimately appear in both a component's bundle and as its
+      own row.
+    - Root component itself is never listed as a component (Fusion does not
+      allow renaming it, and exporting the entire root is rarely the intent).
+      Root-level tagged bodies are still listed under 'bodies'.
 
     Args:
         design: The active Fusion design
         file_prefix: The prefix to match (e.g., "dpx_")
 
     Returns:
-        list: Ordered list of export-candidate dicts (components first, then bodies).
+        dict: {'components': [...], 'bodies': [...]}
     """
     rootComp = design.rootComponent
-    items = []
+    components = []
+    bodies = []
 
-    # --- Pass 1: tagged components (de-duplicated to one occurrence each) ---
-    seen_comp_ids = set()
+    # --- Tagged components (de-duplicated to one occurrence each) ---
+    # Dedup key must be entityToken, not id(comp) — API proxy objects are
+    # transient wrappers whose Python id() can be garbage-collected and
+    # recycled for a totally different component mid-loop, which silently
+    # drops components from the result (they get marked "already seen").
+    seen_comp_tokens = set()
     for comp in design.allComponents:
         if comp == rootComp:
             continue
         if not matches_prefix(comp.name, file_prefix):
             continue
         # Avoid processing the same component definition twice
-        if id(comp) in seen_comp_ids:
+        if comp.entityToken in seen_comp_tokens:
             continue
-        seen_comp_ids.add(id(comp))
+        seen_comp_tokens.add(comp.entityToken)
         # Find the FIRST occurrence of this component in the assembly
         for occ in rootComp.allOccurrences:
             if occ.component == comp:
-                items.append({
+                components.append({
                     'type': 'component',
                     'occurrence': occ,
                     'name': comp.name,
                 })
                 break  # first occurrence only — prevents duplicate STL filenames
 
-    # --- Pass 2: tagged bodies NOT inside a tagged component ---
-    # Collect tagged component defs for fast membership check
-    tagged_comp_set = set()
-    for comp in design.allComponents:
-        if comp != rootComp and matches_prefix(comp.name, file_prefix):
-            tagged_comp_set.add(id(comp))
-
-    # Check all components for tagged bodies.
-    # design.allComponents already includes the root component, so we do NOT
-    # append rootComp again — that would double-scan root-level bodies.
+    # --- Tagged bodies, anywhere in the design ---
+    # design.allComponents already includes the root component, so root-level
+    # bodies are picked up here too without a separate pass.
     for comp in design.allComponents:
         for body in comp.bRepBodies:
             if not body or not matches_prefix(body.name, file_prefix):
                 continue
-            parent_comp = body.parentComponent
-            parent_is_tagged = (parent_comp != rootComp and
-                                id(parent_comp) in tagged_comp_set)
-            if not parent_is_tagged:
-                items.append({
-                    'type': 'body',
-                    'body': body,
-                    'name': body.name,
-                })
+            bodies.append({
+                'type': 'body',
+                'body': body,
+                'name': body.name,
+            })
 
-    # Deduplicate by name: a body and a component may share the same name
-    # (e.g. component 'dpx_lever' whose geometry is also a root-level body
-    # 'dpx_lever'). The component entry was added first in Pass 1 and wins;
-    # the duplicate body entry from Pass 2 is silently dropped.
-    seen_names = set()
-    unique_items = []
-    for item in items:
-        if item['name'] not in seen_names:
-            seen_names.add(item['name'])
-            unique_items.append(item)
-    return unique_items
+    return {'components': components, 'bodies': bodies}
 
 
-def export_bodies(design, file_prefix, ui, items_to_export=None):
+def _collect_tagged_bodies_recursive(occ, file_prefix):
+    """
+    Recursively collect tagged bodies (occurrence proxies, so instance
+    transforms are correct) from an occurrence's full subtree.
+
+    Walks every child occurrence regardless of whether that nested
+    subcomponent is itself tagged — nesting is never a stopping condition.
+    Only a body's own name matching file_prefix includes it; untagged
+    bodies are never swept in.
+
+    Args:
+        occ: The root occurrence to walk (its own bodies are included).
+        file_prefix: The prefix to match (e.g., "dpx_")
+
+    Returns:
+        list: BRepBody proxies found anywhere in the subtree, tagged only.
+    """
+    found = []
+    for body in occ.bRepBodies:
+        if body and body.isValid and matches_prefix(body.name, file_prefix):
+            found.append(body)
+    for child in occ.childOccurrences:
+        found.extend(_collect_tagged_bodies_recursive(child, file_prefix))
+    return found
+
+
+def _walk_occurrence_subtree(occ):
+    """Yield occ and every descendant occurrence in its subtree."""
+    yield occ
+    for child in occ.childOccurrences:
+        yield from _walk_occurrence_subtree(child)
+
+
+def _collect_all_bodies_recursive(occ):
+    """
+    Recursively collect every body (tagged or not) from an occurrence's
+    full subtree. Used only for the sole-untagged-body edge case in
+    export_bodies — never to decide what gets exported by default.
+    """
+    found = []
+    for body in occ.bRepBodies:
+        if body and body.isValid:
+            found.append(body)
+    for child in occ.childOccurrences:
+        found.extend(_collect_all_bodies_recursive(child))
+    return found
+
+
+def export_bodies(design, file_prefix, ui, items_to_export=None, rename_sole_untagged_body=None):
     """
     Export tagged components/bodies as STL files.
 
     Export Rules:
-    - Tagged components/bodies are made visible and exported.
-    - A tagged body INSIDE a tagged component is NOT exported separately;
-      it is included in the parent component's STL.
-    - Untagged sub-components/bodies inside a tagged component are made
-      visible so they are captured in the parent STL.
-    - Tagged sub-components are hidden during the parent export so they
-      get their own separate STL.
+    - A tagged component's STL bundle is built from a recursive walk of its
+      full occurrence subtree, collecting every tagged body found — nesting
+      is never a stopping condition, only a body's own name matters.
+    - A component with exactly one tagged body in its subtree exports as
+      "{component_name}.stl". A component with multiple tagged bodies
+      exports each one individually as "{body_name}.stl" — no merging.
+    - A standalone tagged body (its own row, independent of any component
+      selection) always exports as "{body_name}.stl".
+    - The components list and the bodies list are independent selections:
+      a body may legitimately be exported both as part of a component's
+      bundle and again as its own standalone row.
 
     Args:
         design: The active Fusion design.
         file_prefix: The prefix to match (e.g., "dpx_").
         ui: The Fusion UI object for dialogs.
-        items_to_export: Optional pre-filtered list from the checkbox panel
-            (dicts as returned by _collect_export_items). When supplied the
-            scan and Yes/No preview dialog are skipped; names are refreshed
-            from live Fusion objects so STL filenames reflect any _vN suffix
-            applied by the versioning step that just ran.
+        items_to_export: Optional pre-filtered flat list from the checkbox
+            panel (dicts as returned by flattening _collect_export_items'
+            'components' + 'bodies' groups). When supplied the scan and
+            Yes/No preview dialog are skipped; names are refreshed from live
+            Fusion objects so STL filenames reflect any _vN suffix applied
+            by the versioning step that just ran.
             When None (default / legacy path), the scan runs here and the
             original Yes/No preview dialog is shown.
+        rename_sole_untagged_body: Controls the sole-untagged-body edge case
+            (a tagged component whose subtree has exactly one body and it's
+            untagged): True renames that body in the document to match the
+            component; False exports under the component's name but leaves
+            the document body untouched. None (default) falls back to the
+            module-level RENAME_SOLE_UNTAGGED_BODY constant.
     """
     try:
         app = adsk.core.Application.get()
+
+        if rename_sole_untagged_body is None:
+            rename_sole_untagged_body = RENAME_SOLE_UNTAGGED_BODY
 
         # ── Determine what to export ─────────────────────────────────────────
         if items_to_export is None:
             # Legacy path: scan + Yes/No preview (used by rename-only button
             # or if the commandCreated scan failed)
-            items_to_export = _collect_export_items(design, file_prefix)
+            candidates = _collect_export_items(design, file_prefix)
+            items_to_export = candidates['components'] + candidates['bodies']
 
             if len(items_to_export) == 0:
                 ui.messageBox(f'No tagged items found to export.\n\nPrefix: {file_prefix}')
                 return
 
-            comp_count = sum(1 for x in items_to_export if x['type'] == 'component')
-            body_count = sum(1 for x in items_to_export if x['type'] == 'body')
+            comp_count = len(candidates['components'])
+            body_count = len(candidates['bodies'])
             export_list = '\n'.join(f"  • {item['name']}" for item in items_to_export[:10])
             if len(items_to_export) > 10:
                 export_list += f"\n  ... and {len(items_to_export) - 10} more"
@@ -298,6 +360,7 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
         # Track export results
         exported_count = 0
         failed_items = []
+        warnings = []
 
         # Get the export manager for direct STL export
         exportMgr = design.exportManager
@@ -319,101 +382,111 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
                 if item['type'] == 'component':
                     # Re-fetch the occurrence and component fresh (in case rename invalidated references)
                     occ = item['occurrence']
-                    
+
                     # Verify the occurrence is still valid
                     if not occ or not occ.isValid:
                         failed_items.append(f"{item['name']} (occurrence no longer valid)")
                         continue
-                    
-                    comp = occ.component
-                    
+
                     # Track visibility changes for this export
                     visibility_changes = []
-                    
-                    # Make the occurrence visible
-                    if not occ.isLightBulbOn:
-                        visibility_changes.append(('occ', occ, False))
-                        occ.isLightBulbOn = True
-                    
-                    # Collect ALL bodies from this component for export
-                    # Re-fetch bodies fresh from the component
-                    bodies_to_export = []
-                    for body in comp.bRepBodies:
-                        # Verify body is valid
-                        if body and body.isValid:
-                            bodies_to_export.append(body)
-                            # Make body visible for export
+
+                    # Make every occurrence in the subtree visible — a body is
+                    # only actually visible if its full ancestor chain is too.
+                    for descendant in _walk_occurrence_subtree(occ):
+                        if not descendant.isLightBulbOn:
+                            visibility_changes.append(('occ', descendant, False))
+                            descendant.isLightBulbOn = True
+
+                    # Walk the full subtree (through nested subcomponents,
+                    # tagged or not — nesting is never a stopping condition)
+                    # and collect only bodies whose own name is tagged.
+                    tagged_bodies = _collect_tagged_bodies_recursive(occ, file_prefix)
+
+                    for body in tagged_bodies:
+                        if not body.isLightBulbOn:
+                            visibility_changes.append(('body', body, False))
+                            body.isLightBulbOn = True
+
+                    if len(tagged_bodies) == 0:
+                        # Edge case: nothing tagged in the subtree. If there's
+                        # exactly one body total, it's unambiguous which body
+                        # was meant — sync its name to the component and
+                        # export anyway rather than failing silently.
+                        all_bodies = _collect_all_bodies_recursive(occ)
+                        if len(all_bodies) == 1:
+                            body = all_bodies[0]
+                            old_body_name = body.name
                             if not body.isLightBulbOn:
                                 visibility_changes.append(('body', body, False))
                                 body.isLightBulbOn = True
-                    
-                    # Handle child occurrences (sub-components)
-                    # Tagged sub-components get their own export, so hide them
-                    for childOcc in occ.childOccurrences:
-                        is_tagged = matches_prefix(childOcc.component.name, file_prefix)
-                        
-                        if is_tagged:
-                            # Tagged sub-component - hide it for parent export (gets own export)
-                            if childOcc.isLightBulbOn:
-                                visibility_changes.append(('childOcc', childOcc, True))
-                                childOcc.isLightBulbOn = False
-                        else:
-                            # Untagged sub-component - make visible for parent export
-                            if not childOcc.isLightBulbOn:
-                                visibility_changes.append(('childOcc', childOcc, False))
-                                childOcc.isLightBulbOn = True
-                    
-                    if len(bodies_to_export) == 0:
-                        failed_items.append(f"{item['name']} (no bodies found in component)")
-                    else:
-                        try:
-                            # Try exporting bodies individually then combining,
-                            # instead of creating ObjectCollection (may avoid geometry type issues)
-                            temp_files = []
-                            export_failed = False
-                            
-                            for idx, body in enumerate(bodies_to_export):
+                            renamed_in_document = False
+                            if rename_sole_untagged_body:
                                 try:
-                                    # Export each body to its own temp STL
-                                    temp_filename = os.path.join(exportPath, f"{item['name']}_part{idx}.stl")
-                                    stlOptions = exportMgr.createSTLExportOptions(body)
-                                    stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
-                                    stlOptions.filename = temp_filename
-                                    
-                                    success = exportMgr.execute(stlOptions)
-                                    if success:
-                                        temp_files.append(temp_filename)
+                                    body.name = item['name']
+                                    renamed_in_document = True
+                                except Exception:
+                                    pass  # export still proceeds under the component's filename
+                            try:
+                                stlOptions = exportMgr.createSTLExportOptions(body)
+                                stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                                stlOptions.filename = os.path.join(exportPath, f"{item['name']}.stl")
+
+                                success = exportMgr.execute(stlOptions)
+                                if success:
+                                    exported_count += 1
+                                    if renamed_in_document:
+                                        warnings.append(
+                                            f"{item['name']}: sole body '{old_body_name}' was untagged — "
+                                            f"renamed to match the component (in document) and exported"
+                                        )
                                     else:
-                                        export_failed = True
-                                        break
-                                except Exception as e:
-                                    failed_items.append(f"{item['name']} body {idx} ({str(e)})")
-                                    export_failed = True
-                                    break
-                            
-                            if not export_failed and len(temp_files) > 0:
-                                if len(temp_files) == 1:
-                                    # Single body - rename temp file to final name
-                                    final_filename = os.path.join(exportPath, f"{item['name']}.stl")
-                                    os.rename(temp_files[0], final_filename)
-                                    exported_count += 1
+                                        warnings.append(
+                                            f"{item['name']}: sole body '{old_body_name}' was untagged — "
+                                            f"exported under the component's name (document body left unchanged)"
+                                        )
                                 else:
-                                    # Multiple bodies - keep separate files for now (TODO: merge STLs)
-                                    exported_count += 1
-                            elif not export_failed:
-                                failed_items.append(f"{item['name']} (no bodies exported)")
+                                    failed_items.append(f"{item['name']} (Fusion rejected export)")
+                            except Exception as export_err:
+                                failed_items.append(f"{item['name']} ({str(export_err)})")
+                        else:
+                            failed_items.append(f"{item['name']} (no tagged bodies found in subtree)")
+                    elif len(tagged_bodies) == 1:
+                        # Single tagged body — export under the component's own name.
+                        body = tagged_bodies[0]
+                        try:
+                            stlOptions = exportMgr.createSTLExportOptions(body)
+                            stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                            stlOptions.filename = os.path.join(exportPath, f"{item['name']}.stl")
+
+                            success = exportMgr.execute(stlOptions)
+                            if success:
+                                exported_count += 1
+                            else:
+                                failed_items.append(f"{item['name']} (Fusion rejected export)")
                         except Exception as export_err:
                             failed_items.append(f"{item['name']} ({str(export_err)})")
-                    
-                    # Restore visibility for this component's children
+                    else:
+                        # Multiple tagged bodies — export each under its own
+                        # already-versioned name, no merging.
+                        for body in tagged_bodies:
+                            try:
+                                stlOptions = exportMgr.createSTLExportOptions(body)
+                                stlOptions.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementMedium
+                                stlOptions.filename = os.path.join(exportPath, f"{body.name}.stl")
+
+                                success = exportMgr.execute(stlOptions)
+                                if success:
+                                    exported_count += 1
+                                else:
+                                    failed_items.append(f"{body.name} (Fusion rejected export)")
+                            except Exception as export_err:
+                                failed_items.append(f"{body.name} ({str(export_err)})")
+
+                    # Restore visibility for this component's subtree
                     for change_type, obj, original_state in visibility_changes:
-                        if change_type == 'occ':
-                            obj.isLightBulbOn = original_state
-                        elif change_type == 'body':
-                            obj.isLightBulbOn = original_state
-                        elif change_type == 'childOcc':
-                            obj.isLightBulbOn = original_state
-                    
+                        obj.isLightBulbOn = original_state
+
                 elif item['type'] == 'body':
                     # Export body directly
                     body = item['body']
@@ -461,6 +534,11 @@ def export_bodies(design, file_prefix, ui, items_to_export=None):
         # Show summary
         summary = f'DPX Export Complete\n\n'
         summary += f'Exported: {exported_count} STL files to:\n{exportPath}\n'
+        if warnings:
+            summary += f'\nWarnings ({len(warnings)}):\n'
+            summary += '\n'.join([f'  • {w}' for w in warnings[:5]])
+            if len(warnings) > 5:
+                summary += f'\n  ... and {len(warnings) - 5} more'
         if failed_items:
             summary += f'\nFailed ({len(failed_items)}):\n'
             summary += '\n'.join([f'  • {f}' for f in failed_items[:5]])
@@ -636,7 +714,30 @@ class DpxVersioningCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
                 inputs = cmd.commandInputs
 
-                if len(candidates) == 0:
+                # Show the detected prefix so it's obvious what's being matched
+                # before the user scans the lists below.
+                inputs.addTextBoxCommandInput(
+                    'dpx_detected_prefix',
+                    '',
+                    f'Detected prefix: "{file_prefix}"',
+                    1,
+                    True,
+                )
+
+                # Top-level setting (not nested in a group) — applies to the
+                # sole-untagged-body edge case in a tagged component's subtree.
+                inputs.addBoolValueInput(
+                    'dpx_rename_sole_untagged',
+                    'Rename untagged body',
+                    True,   # is a checkbox
+                    '',     # no resource icon
+                    RENAME_SOLE_UNTAGGED_BODY,  # default: matches the module constant
+                )
+
+                comp_candidates = candidates['components']
+                body_candidates = candidates['bodies']
+
+                if len(comp_candidates) == 0 and len(body_candidates) == 0:
                     # Still open the panel but tell the user nothing was found
                     inputs.addTextBoxCommandInput(
                         'dpx_no_items',
@@ -647,17 +748,35 @@ class DpxVersioningCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                     )
                     return
 
-                # Single flat list — check items you want exported as STL.
-                # All tagged items get versioned regardless; these checkboxes
-                # only control which ones produce an STL file.
-                grp = inputs.addGroupCommandInput(
-                    'grp_export',
-                    f'Select to export  ({len(candidates)})',
+                # Two independent groups — check items you want exported as
+                # STL. All tagged items get versioned regardless; these
+                # checkboxes only control which ones produce an STL file.
+                # Checking a component expands to whatever tagged bodies its
+                # subtree contains at export time; a body may legitimately
+                # also appear checked in its own row. Each group's native
+                # collapse/expand doubles as a simple show/hide filter.
+                grp_comp = inputs.addGroupCommandInput(
+                    'grp_export_components',
+                    f'Tagged Components  ({len(comp_candidates)})',
                 )
-                grp.isExpanded = True
-                for idx, item in enumerate(candidates):
-                    grp.children.addBoolValueInput(
-                        f'dpx_export_{idx}',
+                grp_comp.isExpanded = len(comp_candidates) > 0
+                for idx, item in enumerate(comp_candidates):
+                    grp_comp.children.addBoolValueInput(
+                        f'dpx_export_comp_{idx}',
+                        item['name'],
+                        True,   # is a checkbox
+                        '',     # no resource icon
+                        False,  # default: unchecked — bodies are the common case
+                    )
+
+                grp_body = inputs.addGroupCommandInput(
+                    'grp_export_bodies',
+                    f'Tagged Bodies  ({len(body_candidates)})',
+                )
+                grp_body.isExpanded = len(body_candidates) > 0
+                for idx, item in enumerate(body_candidates):
+                    grp_body.children.addBoolValueInput(
+                        f'dpx_export_body_{idx}',
                         item['name'],
                         True,   # is a checkbox
                         '',     # no resource icon
@@ -968,15 +1087,22 @@ class DpxVersioningCommandExecuteHandler(adsk.core.CommandEventHandler):
             if self.with_export:
                 if self.export_items is not None:
                     # Interactive path: read checkbox states set by the user
+                    # from the two independent groups (components, bodies).
                     inputs = args.command.commandInputs
                     selected = []
-                    for idx, item in enumerate(self.export_items):
-                        cb = inputs.itemById(f'dpx_export_{idx}')
+                    for idx, item in enumerate(self.export_items.get('components', [])):
+                        cb = inputs.itemById(f'dpx_export_comp_{idx}')
                         # If the input is missing (panel build partial failure),
                         # treat it as checked so nothing is silently skipped.
                         if cb is None or cb.value:
                             selected.append(item)
-                    export_bodies(design, file_prefix, ui, selected)
+                    for idx, item in enumerate(self.export_items.get('bodies', [])):
+                        cb = inputs.itemById(f'dpx_export_body_{idx}')
+                        if cb is None or cb.value:
+                            selected.append(item)
+                    rename_cb = inputs.itemById('dpx_rename_sole_untagged')
+                    rename_sole_untagged_body = rename_cb.value if rename_cb is not None else None
+                    export_bodies(design, file_prefix, ui, selected, rename_sole_untagged_body)
                 else:
                     # Legacy path: scan + Yes/No preview inside export_bodies
                     export_bodies(design, file_prefix, ui)
